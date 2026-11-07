@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kawallm"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Low-latency guardrail engine for Indonesian PII (UU PDP) masking and content safety, drop-in for LiteLLM Proxy."
 readme = "README.md"
 license = "Apache-2.0"
@@ -21,6 +21,7 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Typing :: Typed",
   "Topic :: Security",
   "Topic :: Text Processing :: Linguistic",
 ]
@@ -39,8 +40,14 @@ kawallm = "kawallm.__main__:main"
 Homepage = "https://github.com/susiloharjo/kawalLM"
 Issues = "https://github.com/susiloharjo/kawalLM/issues"
 
+[tool.hatch.version]
+path = "src/kawallm/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/kawallm"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/docs", "/README.md", "/LICENSE", "/NOTICE", "/CHANGELOG.md", "/CONTRIBUTING.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

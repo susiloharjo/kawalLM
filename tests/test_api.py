@@ -56,3 +56,26 @@ def test_reversible_scan_uses_vault():
     r = guard.scan(f"NIK {NIK}")
     assert r.sanitized_text == "NIK <ID_NIK_1>"
     assert guard.unmask("ok <ID_NIK_1>", r.session_id) == f"ok {NIK}"
+
+
+def test_anonymize_does_not_mutate_input_map_and_is_stateless():
+    guard = KawalLM(mode="reversible")
+    original = {"<ID_PHONE_1>": "081288889999"}
+    text, new_map = guard.anonymize("hubungi 081377776666", original)
+    assert original == {"<ID_PHONE_1>": "081288889999"}
+    assert text == "hubungi <ID_PHONE_2>"
+    assert new_map == {"<ID_PHONE_1>": "081288889999", "<ID_PHONE_2>": "081377776666"}
+    assert guard.vault.mapping("apapun") == {}  # nothing written to the vault
+
+
+def test_anonymize_map_works_in_another_engine_instance():
+    text, session_map = KawalLM().anonymize("NIK 3171011501900001, HP 081288889999")
+    assert text == "NIK <ID_NIK_1>, HP <ID_PHONE_1>"
+    # Different process/replica: only the caller-owned map is needed.
+    assert KawalLM().deanonymize(f"Data {text}", session_map) == "Data NIK 3171011501900001, HP 081288889999"
+
+
+def test_restore_tokens_leaves_unknown_tokens_and_empty_inputs():
+    assert restore_tokens("<ID_NIK_2> <ID_NIK_1>", {"<ID_NIK_1>": "x"}) == "<ID_NIK_2> x"
+    assert restore_tokens("<ID_NIK_1>", {}) == "<ID_NIK_1>"
+    assert restore_tokens("", {"<ID_NIK_1>": "x"}) == ""

@@ -4,7 +4,22 @@ on:
     tags: ["v*"]
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Tag must match package version
+        run: |
+          v=$(python -c "import re,pathlib;print(re.search(r'__version__ = \"(.+?)\"', pathlib.Path('src/kawallm/__init__.py').read_text()).group(1))")
+          [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} != version v$v"; exit 1; }
+      - run: uv venv && uv pip install -e ".[dev,litellm,presidio]"
+      - run: uv run pytest --cov --cov-fail-under=90
+
   pypi:
+    needs: test
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -13,9 +28,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - run: uv build
+      - run: uvx twine check dist/*
       - uses: pypa/gh-action-pypi-publish@release/v1
 
   image:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       packages: write

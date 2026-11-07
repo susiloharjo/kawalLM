@@ -77,6 +77,34 @@ async def test_reversible_roundtrip_and_leak_masking():
     assert msg.tool_calls[0].function.arguments == f'{{"nik": "{NIK}"}}'
 
 
+async def test_reversible_keeps_numbering_across_turns_of_same_call():
+    g = _guard(masking_mode="reversible")
+    first = {"litellm_call_id": "t1", "messages": [{"role": "user", "content": f"NIK {NIK}"}]}
+    await g.async_pre_call_hook(None, None, first, "completion")
+    second = {"litellm_call_id": "t1", "messages": [{"role": "user", "content": f"NIK {NIK} dan HP 081288889999"}]}
+    await g.async_pre_call_hook(None, None, second, "completion")
+    assert second["messages"][0]["content"] == "NIK <ID_NIK_1> dan HP <ID_PHONE_1>"
+
+
+async def test_reversible_sessions_do_not_leak_between_calls():
+    g = _guard(masking_mode="reversible")
+    a = {"litellm_call_id": "a", "messages": [{"role": "user", "content": f"NIK {NIK}"}]}
+    b = {"litellm_call_id": "b", "messages": [{"role": "user", "content": "halo"}]}
+    await g.async_pre_call_hook(None, None, a, "completion")
+    await g.async_pre_call_hook(None, None, b, "completion")
+    out = await g.async_post_call_success_hook(b, None, _response("Data <ID_NIK_1>"))
+    assert out.choices[0].message.content == "Data <ID_NIK_1>"  # call b never sent a NIK
+
+
+async def test_reversible_tool_call_without_arguments_is_untouched():
+    g = _guard(masking_mode="reversible")
+    data = {"litellm_call_id": "x", "messages": [{"role": "user", "content": f"NIK {NIK}"}]}
+    await g.async_pre_call_hook(None, None, data, "completion")
+    out = await g.async_post_call_success_hook(data, None, _response("ok <ID_NIK_1>"))
+    assert out.choices[0].message.content == f"ok {NIK}"
+    assert out.choices[0].message.tool_calls is None
+
+
 async def test_post_call_without_session_masks_only():
     g = _guard()
     out = await g.async_post_call_success_hook({}, None, _response(f"NIK {NIK}"))

@@ -83,3 +83,90 @@ def test_synthetic_mixed_document_all_masked():
         n, p, w = synthetic.nik(s), synthetic.phone(s), synthetic.npwp(s)
         out = e.mask_pii(f"Data: NIK {n}; HP {p}; NPWP {w}.")
         assert n not in out and p not in out and w not in out, out
+
+
+# ---------------- reversible masking: edge cases ----------------
+NIK2 = "3171015501920002"
+
+
+def test_reversible_numbers_each_entity_independently():
+    e = KawalLMEngine(mode="reversible")
+    r = e.mask(f"NIK {NIK}, HP 081234567890, NIK lain {NIK2}, HP lain 081377776666")
+    assert r.text == "NIK <ID_NIK_1>, HP <ID_PHONE_1>, NIK lain <ID_NIK_2>, HP lain <ID_PHONE_2>"
+    assert e.unmask(r.text, r.session_id) == f"NIK {NIK}, HP 081234567890, NIK lain {NIK2}, HP lain 081377776666"
+
+
+def test_reversible_email_roundtrip():
+    e = KawalLMEngine(mode="reversible")
+    r = e.mask("Hubungi budi@example.co.id atau budi@example.co.id")
+    assert r.text == "Hubungi <EMAIL_1> atau <EMAIL_1>"
+    assert e.unmask(r.text, r.session_id) == "Hubungi budi@example.co.id atau budi@example.co.id"
+
+
+def test_reversible_generates_session_and_no_pii_still_has_session():
+    e = KawalLMEngine(mode="reversible")
+    r = e.mask("tidak ada data pribadi di sini")
+    assert r.text == "tidak ada data pribadi di sini" and not r.found
+    assert r.session_id
+    assert e.mask("tidak ada").session_id != r.session_id
+
+
+def test_reversible_sessions_are_isolated():
+    e = KawalLMEngine(mode="reversible")
+    a = e.mask(f"NIK {NIK}", "sesi-a")
+    b = e.mask(f"NIK {NIK2}", "sesi-b")
+    assert a.text == b.text == "NIK <ID_NIK_1>"
+    assert e.unmask(a.text, "sesi-a") == f"NIK {NIK}"
+    assert e.unmask(b.text, "sesi-b") == f"NIK {NIK2}"
+    # A token from one session never resolves to another session's value.
+    assert NIK2 not in e.unmask(a.text, "sesi-a")
+
+
+def test_unmask_unknown_or_expired_session_is_noop():
+    e = KawalLMEngine(mode="reversible")
+    assert e.unmask("NIK <ID_NIK_1>", "tidak-ada") == "NIK <ID_NIK_1>"
+    expired = KawalLMEngine(mode="reversible", vault_ttl=-1)
+    r = expired.mask(f"NIK {NIK}")
+    assert expired.unmask(r.text, r.session_id) == r.text
+
+
+def test_mode_override_per_call_uses_vault():
+    e = KawalLMEngine()  # engine default is token mode
+    assert e.mask_pii(f"NIK {NIK}") == "NIK <ID_NIK>"
+    r = e.mask(f"NIK {NIK}", mode="reversible")
+    assert r.text == "NIK <ID_NIK_1>"
+    assert e.unmask(r.text, r.session_id) == f"NIK {NIK}"
+
+
+def test_vault_mapping_returns_copy():
+    e = KawalLMEngine(mode="reversible")
+    r = e.mask(f"NIK {NIK}")
+    e.vault.mapping(r.session_id).clear()
+    assert e.unmask(r.text, r.session_id) == f"NIK {NIK}"
+
+
+def test_altered_token_is_not_restored():
+    # Documented limitation: only the exact <ID_X_n> form is restored.
+    e = KawalLMEngine(mode="reversible")
+    r = e.mask(f"NIK {NIK}")
+    for altered in ("ID_NIK_1", "<id_nik_1>", "<ID_NIK_ 1>", "&lt;ID_NIK_1&gt;"):
+        assert e.unmask(f"nomor {altered}", r.session_id) == f"nomor {altered}"
+
+
+def test_vault_is_thread_safe_and_consistent():
+    import threading
+
+    v = Vault()
+    results: list[str] = []
+
+    def work(i: int) -> None:
+        results.append(v.token_for("s", "ID_PHONE", f"0812000000{i % 5}"))
+
+    threads = [threading.Thread(target=work, args=(i,)) for i in range(50)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    mapping = v.mapping("s")
+    assert len(mapping) == 5  # same value always maps to the same token
+    assert set(results) == set(mapping)

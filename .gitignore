@@ -11,3 +11,6 @@ htmlcov/
 .ruff_cache/
 # Local-only dictionaries (e.g. non-commercial imports) — never commit
 local_*.json
+
+CLAUDE.md
+PRD.md
