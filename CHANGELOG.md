@@ -5,6 +5,9 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikut
 ## [Unreleased]
 
 ### Added
+- Audit log (`kawallm.audit`): `AuditLog`, `AuditEvent`, `logging_sink`, `JsonlFileSink`. Event berisi aksi, jumlah kemunculan per entitas, dan kategori pelanggaran, tanpa nilai PII, teks, atau isi vault. `KawalLM(audit=...)` + `scan(..., context=...)`; guardrail LiteLLM: `audit_log`, `audit_file`, `audit_include_clean`, `audit_include_user`. Sink yang gagal tidak menggagalkan request.
+
+### Added
 - Detektor identitas baru: `ID_NIP` (18 digit, divalidasi tanggal lahir, bulan pengangkatan, gender), `ID_NISN`, `ID_PASSPORT`, `ID_SIM` (ketiganya wajib kata kunci di dekat nomor). Termasuk generator `kawallm.synthetic.nip/nisn/passport/sim` dan dukungan Presidio.
 
 ## [0.1.1] - 2026-11-07

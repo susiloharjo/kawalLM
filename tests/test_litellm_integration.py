@@ -214,3 +214,90 @@ async def test_reversible_tool_call_arguments_roundtrip():
     out = await g.async_pre_call_hook(None, None, data, "completion")
     assert out["messages"][0]["content"] == "NIK <ID_NIK_1>"
     assert json.loads(out["messages"][1]["tool_calls"][0]["function"]["arguments"]) == {"nik": "<ID_NIK_1>"}
+
+
+# ---------------------------------------------------------------- audit trail
+def _audited(**kw):
+    from kawallm import AuditLog
+
+    events = []
+    g = _guard(**kw)
+    g.audit = AuditLog(events.append)
+    return g, events
+
+
+async def test_audit_disabled_by_default():
+    assert _guard().audit is None
+
+
+async def test_audit_params_build_sinks(tmp_path):
+    path = tmp_path / "a.jsonl"
+    g = _guard(audit_log="true", audit_file=str(path), audit_include_clean="false")
+    assert g.audit is not None and len(g.audit.sinks) == 2 and g.audit.include_clean is False
+    assert _guard(audit_file=str(path)).audit is not None  # a file alone enables auditing
+
+
+async def test_audit_pre_call_masked_with_key_context():
+    g, events = _audited()
+    ukd = SimpleNamespace(team_id="team-hr", key_alias="hr-bot", user_id="budi")
+    data = {"model": "gpt-4o", "litellm_call_id": "call-1", "messages": [{"role": "user", "content": f"NIK {NIK}"}]}
+    await g.async_pre_call_hook(ukd, None, data, "completion")
+    (e,) = events
+    assert (e.source, e.action, e.request_id) == ("litellm.pre_call", "masked", "call-1")
+    assert e.entities == {"ID_NIK": 1}
+    assert e.context == {"team_id": "team-hr", "key_alias": "hr-bot", "model": "gpt-4o"}  # no user_id by default
+    assert NIK not in e.to_json()
+
+
+async def test_audit_user_id_only_when_enabled():
+    g, events = _audited(audit_include_user=True)
+    ukd = SimpleNamespace(team_id="t", key_alias=None, user_id="budi")
+    await g.async_pre_call_hook(ukd, None, {"messages": [{"role": "user", "content": "halo"}]}, "completion")
+    assert events[0].action == "pass" and events[0].context["user_id"] == "budi"
+
+
+async def test_audit_blocked_request():
+    g, events = _audited()
+    data = {"messages": [{"role": "user", "content": f"slot gacor maxwin, NIK {NIK}"}]}
+    with pytest.raises(HTTPException):
+        await g.async_pre_call_hook(None, None, data, "completion")
+    (e,) = events
+    assert e.action == "blocked" and e.categories == ["JUDOL_PINJOL"]
+    assert "slot gacor" not in e.to_json() and NIK not in e.to_json()
+
+
+async def test_audit_counts_tool_call_arguments_too():
+    g, events = _audited()
+    data = {"messages": [_assistant_call(f'{{"nik": "{NIK}", "hp": "081234567890"}}')]}
+    await g.async_pre_call_hook(None, None, data, "completion")
+    assert events[0].entities == {"ID_NIK": 1, "ID_PHONE": 1}
+
+
+async def test_audit_post_call_records_output_leakage():
+    g, events = _audited()
+    await g.async_post_call_success_hook({"litellm_call_id": "c9"}, None, _response("Hubungi 081299998888"))
+    (e,) = events
+    assert (e.source, e.action, e.request_id) == ("litellm.post_call", "masked", "c9")
+    assert e.entities == {"ID_PHONE": 1}
+
+
+async def test_audit_streaming_records_once_at_the_end():
+    g, events = _audited()
+
+    async def gen():
+        for p in ("Hubungi 0812", "-3456-7890 untuk info ", "ya. " * 20):
+            yield _chunk(p)
+
+    [c async for c in g.async_post_call_streaming_iterator_hook(None, gen(), {"litellm_call_id": "s1"})]
+    (e,) = events
+    assert e.source == "litellm.post_call" and e.entities == {"ID_PHONE": 1} and e.request_id == "s1"
+
+
+async def test_audit_does_not_change_behaviour():
+    plain = _guard(masking_mode="reversible")
+    audited, _ = _audited(masking_mode="reversible")
+    a = {"litellm_call_id": "z", "messages": [{"role": "user", "content": f"NIK {NIK} HP 081234567890"}]}
+    b = {"litellm_call_id": "z", "messages": [{"role": "user", "content": f"NIK {NIK} HP 081234567890"}]}
+    await plain.async_pre_call_hook(None, None, a, "completion")
+    await audited.async_pre_call_hook(None, None, b, "completion")
+    assert a["messages"] == b["messages"]

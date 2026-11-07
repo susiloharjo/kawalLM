@@ -6,9 +6,10 @@ import re
 import threading
 import time
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
+from .audit import AuditLog, AuditSink, as_audit_log
 from .pii import ALL_ENTITIES, PIIMatch, detect_pii
 from .safety import SafetyResult, SafetyScanner
 
@@ -100,6 +101,7 @@ class KawalLMEngine:
         vault_ttl: float = 600.0,
         redact_text: str = "[REDACTED]",
         validate_wilayah: bool = True,
+        audit: AuditLog | AuditSink | None = None,
     ) -> None:
         if mode not in MASK_MODES:
             raise ValueError(f"mode must be one of {MASK_MODES}")
@@ -115,6 +117,7 @@ class KawalLMEngine:
             block_categories=block_categories,
         )
         self.vault = Vault(ttl=vault_ttl)
+        self.audit = as_audit_log(audit)
 
     # ---------------- safety ----------------
     def scan_safety(self, text: str) -> SafetyResult:
@@ -240,15 +243,25 @@ class KawalLM(KawalLMEngine):
         kwargs.setdefault("block_violations", block_safety)
         super().__init__(mask_pii=mask_pii, mode=mode, validate_wilayah=validate_wilayah, **kwargs)
 
-    def scan(self, text: str, session_id: str | None = None) -> ScanResult:
+    def scan(self, text: str, session_id: str | None = None, context: Mapping[str, object] | None = None) -> ScanResult:
         """Safety check + PII masking in one call.
 
         ``sanitized_text`` is always produced (useful for logging), even when
-        the request is blocked.
+        the request is blocked. When the engine has an ``audit`` log, one event is
+        recorded (counts and categories only); ``context`` adds caller-supplied
+        identifiers such as ``{"app": "hr-bot"}``.
         """
         safety = self.scanner.scan(text)
         blocked = self.block_violations and not safety.safe
         masked = self.mask(text, session_id)
+        if self.audit:
+            self.audit.record(
+                "scan",
+                entities=(m.entity for m in masked.entities),
+                categories=safety.violations if blocked else (),
+                blocked=blocked,
+                context=context,
+            )
         return ScanResult(
             is_blocked=blocked,
             violation_reason=safety.reason if blocked else "",

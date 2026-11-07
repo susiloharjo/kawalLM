@@ -53,6 +53,10 @@ Parameter lengkap:
 | `threshold` | `1.0` | Skor minimum per kategori untuk blokir |
 | `block_status_code` | `400` | Bisa diganti `403` |
 | `validate_wilayah` | `true` | `false` = NIK hanya dicek tanggal lahir + serial |
+| `audit_log` | `false` | `true` = tulis event audit ke logger Python `kawallm.audit` (satu baris JSON per request) |
+| `audit_file` | tidak ada | Path file JSONL tujuan event audit (mengaktifkan audit walau `audit_log` mati) |
+| `audit_include_clean` | `true` | `false` = jangan catat request yang tidak dimaskir/diblokir (mengurangi volume) |
+| `audit_include_user` | `false` | `true` = sertakan `user_id` LiteLLM di `context` (default hanya `team_id`, `key_alias`, `model`) |
 
 ### 2. Jalankan via Docker Compose
 
@@ -141,6 +145,33 @@ Berlaku juga untuk streaming dan untuk argumen `tool_calls` di response. Hal yan
 - Mapping disimpan **di memori satu proses**, per `litellm_call_id`. Kalau LiteLLM berjalan dengan beberapa replica dan response bisa mendarat di replica lain, pakai sticky session atau mode `token`.
 - Hanya token persis `<ID_PHONE_1>` yang dipulihkan. Kalau model menuliskannya dengan bentuk lain (`ID_PHONE_1`, huruf kecil), token itu dibiarkan apa adanya.
 - Sesi antar-request terisolasi: token dari satu request tidak pernah memulihkan nilai milik request lain.
+
+### 4. Audit log (jejak kepatuhan tanpa menyimpan PII)
+
+```yaml
+guardrails:
+  - guardrail_name: kawallm
+    litellm_params:
+      guardrail: kawallm.integrations.litellm.KawalLMGuardrail
+      mode: [pre_call, post_call]
+      default_on: true
+      audit_log: true                          # ke logger "kawallm.audit"
+      audit_file: /var/log/kawallm/audit.jsonl # dan/atau file JSONL
+```
+
+Satu event per request (`litellm.pre_call`) dan satu untuk response (`litellm.post_call`, hanya berisi PII baru yang dihasilkan model):
+
+```json
+{"action": "masked", "categories": [], "context": {"key_alias": "hr-bot", "model": "gpt-4o", "team_id": "team-hr"},
+ "entities": {"ID_NIK": 1, "ID_PHONE": 2}, "request_id": "call-1", "source": "litellm.pre_call", "ts": "2026-11-07T20:31:02.114Z"}
+{"action": "blocked", "categories": ["JUDOL_PINJOL"], "context": {"model": "gpt-4o"},
+ "entities": {}, "request_id": "call-2", "source": "litellm.pre_call", "ts": "2026-11-07T20:31:09.870Z"}
+```
+
+- `entities` adalah **jumlah kemunculan** per jenis, bukan nilainya. Teks, nilai PII, dan isi vault tidak pernah dicatat.
+- `request_id` = `litellm_call_id`, jadi event bisa dicocokkan dengan log LiteLLM tanpa menyalin isi request.
+- Bila sink gagal (disk penuh, dsb.), request tetap berjalan dan error dicatat di logger `kawallm`.
+- Pemakaian di library: `KawalLM(audit=AuditLog(logging_sink(), JsonlFileSink("audit.jsonl")))`, atau berikan fungsi sendiri `def sink(event: AuditEvent): ...`.
 
 ---
 

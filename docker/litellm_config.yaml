@@ -25,6 +25,8 @@ guardrails:
       scan_roles: user                # role yang dicek safety (system prompt tidak)
       block_categories: JUDOL_PINJOL,SARA_HATE_SPEECH,JAILBREAK
       block_status_code: 400
+      # audit_log: true               # catat aksi/jumlah entitas per request (tanpa nilai PII)
+      # audit_file: /var/log/kawallm/audit.jsonl
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

@@ -130,6 +130,21 @@ cd docker
 OPENAI_API_KEY=sk-... LITELLM_MASTER_KEY=sk-local docker compose up --build
 ```
 
+## Audit log
+
+Untuk bukti kepatuhan (UU PDP) tanpa menyimpan datanya: tiap request dicatat sebagai satu event berisi **aksi** (`pass` / `masked` / `blocked`), **jumlah kemunculan per jenis entitas**, dan **kategori pelanggaran**. Nilai asli (NIK, nomor HP), teks request, dan isi vault **tidak pernah** ditulis.
+
+```python
+from kawallm import KawalLM, AuditLog, JsonlFileSink, logging_sink
+
+guard = KawalLM(audit=AuditLog(logging_sink(), JsonlFileSink("audit.jsonl")))
+guard.scan("NIK saya 3171011501900001", context={"app": "hr-bot"})
+# {"action": "masked", "categories": [], "context": {"app": "hr-bot"},
+#  "entities": {"ID_NIK": 1}, "request_id": "...", "source": "scan", "ts": "2026-11-07T20:31:02.114Z"}
+```
+
+Di LiteLLM cukup tambah `audit_log: true` dan/atau `audit_file: /var/log/kawallm/audit.jsonl` di blok guardrail (lihat [`docs/usage.md`](docs/usage.md)). Konteks `team_id`, `key_alias`, dan `model` diambil dari LiteLLM; `user_id` hanya bila `audit_include_user: true`. Sink yang gagal tidak menggagalkan request. Sink buatan sendiri cukup berupa fungsi `def sink(event): ...`. Isi `context` dari pemanggil tidak boleh memuat PII.
+
 ## Presidio
 
 ```python
@@ -183,6 +198,7 @@ Throughput ≥ 1.500 req/s pada 2 vCPU **tercapai untuk prompt pendek (≤ ~200 
 - **False positive** diukur pada set kalimat wajar `tests/data/benign_id.txt` (~110 kalimat buatan maintainer, target < 1%, saat ini 0 terdampak). Set ini kecil dan ditulis oleh maintainer; kalimat nyata dari pengguna sangat kami butuhkan.
 - Validasi NIK/NPWP memeriksa **format**, bukan keberadaan orangnya.
 - Vault reversible bersifat in-memory per proses; untuk multi-replica gunakan sticky session.
+- Audit log baru tersedia untuk `KawalLM.scan()` dan guardrail LiteLLM; middleware FastAPI belum mencatat event.
 - Safety scan tidak memeriksa argumen `tool_calls` kecuali role `assistant` ditambahkan ke `scan_roles` (PII di argumen selalu dimaskir).
 
 ## Sumber data & atribusi

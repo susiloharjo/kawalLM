@@ -27,11 +27,13 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections import Counter
 from typing import Any
 
 from fastapi import HTTPException
 from litellm.integrations.custom_guardrail import CustomGuardrail
 
+from kawallm.audit import AuditLog, JsonlFileSink, logging_sink
 from kawallm.core import KawalLMEngine
 
 _SESSION_KEY = "kawallm_session"
@@ -67,6 +69,10 @@ class KawalLMGuardrail(CustomGuardrail):
         block_status_code: int = 400,
         validate_wilayah: bool = True,
         block_safety_violations: bool | None = None,
+        audit_log: bool | str = False,
+        audit_file: str | None = None,
+        audit_include_clean: bool = True,
+        audit_include_user: bool = False,
         **kwargs: Any,
     ) -> None:
         if block_safety_violations is not None:  # alias used in older docs
@@ -84,6 +90,13 @@ class KawalLMGuardrail(CustomGuardrail):
         self.mask_output = _as_bool(mask_output)
         self.scan_roles = frozenset(_as_list(scan_roles) or ["user"])
         self.block_status_code = int(block_status_code)
+        sinks = []
+        if _as_bool(audit_log):
+            sinks.append(logging_sink())
+        if audit_file:
+            sinks.append(JsonlFileSink(audit_file))
+        self.audit = AuditLog(*sinks, include_clean=_as_bool(audit_include_clean)) if sinks else None
+        self.audit_include_user = _as_bool(audit_include_user)
         super().__init__(**kwargs)
 
     # ------------------------------------------------------------ helpers
@@ -116,7 +129,43 @@ class KawalLMGuardrail(CustomGuardrail):
                 },
             )
 
-    def _mask_json_value(self, value: Any, sid: str | None, scan: bool) -> Any:
+    def _mask_text(self, text: str, sid: str | None, counts: Counter | None, mode: str | None = None) -> str:
+        """Mask ``text`` and add the entity types found to ``counts`` (used only for the audit trail)."""
+        res = self.engine.mask(text, sid, mode)
+        if counts is not None:
+            counts.update(m.entity for m in res.entities)
+        return res.text
+
+    def _record(
+        self,
+        source: str,
+        data: dict,
+        user_api_key_dict: Any,
+        counts: Counter,
+        blocked: bool = False,
+        categories: Any = (),
+    ) -> None:
+        """Write one audit event (counts and categories only, never text or matched values)."""
+        if self.audit is None:
+            return
+        context = {}
+        for field in ("team_id", "key_alias", *(("user_id",) if self.audit_include_user else ())):
+            value = getattr(user_api_key_dict, field, None)
+            if value:
+                context[field] = value
+        model = data.get("model")
+        if model:
+            context["model"] = model
+        self.audit.record(
+            source,
+            entities=counts.elements(),
+            categories=categories,
+            blocked=blocked,
+            request_id=str(data.get("litellm_call_id") or "") or None,
+            context=context,
+        )
+
+    def _mask_json_value(self, value: Any, sid: str | None, scan: bool, counts: Counter | None = None) -> Any:
         """Mask (and optionally safety-scan) every string/int leaf of a parsed JSON value."""
         if isinstance(value, bool):
             return value
@@ -124,15 +173,15 @@ class KawalLMGuardrail(CustomGuardrail):
             text = str(value)
             if scan and isinstance(value, str):
                 self._check(text)
-            masked = self.engine.mask_pii(text, sid)
+            masked = self._mask_text(text, sid, counts)
             return value if masked == text else masked
         if isinstance(value, list):
-            return [self._mask_json_value(v, sid, scan) for v in value]
+            return [self._mask_json_value(v, sid, scan, counts) for v in value]
         if isinstance(value, dict):
-            return {k: self._mask_json_value(v, sid, scan) for k, v in value.items()}
+            return {k: self._mask_json_value(v, sid, scan, counts) for k, v in value.items()}
         return value
 
-    def _mask_arguments(self, args: str, sid: str | None, scan: bool) -> str:
+    def _mask_arguments(self, args: str, sid: str | None, scan: bool, counts: Counter | None = None) -> str:
         """Tool-call arguments are a JSON string; mask leaves so the result stays valid JSON.
 
         A bare number such as ``{"nik": 3171011501900001}`` becomes the string ``"<ID_NIK>"``.
@@ -143,15 +192,15 @@ class KawalLMGuardrail(CustomGuardrail):
         except ValueError:
             if scan:
                 self._check(args)
-            return self.engine.mask_pii(args, sid)
-        masked = self._mask_json_value(parsed, sid, scan)
+            return self._mask_text(args, sid, counts)
+        masked = self._mask_json_value(parsed, sid, scan, counts)
         return args if masked == parsed else json.dumps(masked, ensure_ascii=False)
 
-    def _process_output(self, text: str, sid: str | None) -> str:
+    def _process_output(self, text: str, sid: str | None, counts: Counter | None = None) -> str:
         if self.mask_output:
             # Output-leakage protection. Always plain tokens here: new PII produced by the
             # model is not the caller's to restore.
-            text = self.engine.mask_pii(text, mode="redact" if self.engine.mode == "redact" else "token")
+            text = self._mask_text(text, None, counts, "redact" if self.engine.mode == "redact" else "token")
         if sid and self.restore_output and self.engine.mode == "reversible":
             text = self.engine.unmask(text, sid)
         return text
@@ -168,6 +217,24 @@ class KawalLMGuardrail(CustomGuardrail):
         if not messages:
             return data
         sid = self._session(data, create=self.engine.mode == "reversible")
+        counts: Counter = Counter()
+        try:
+            self._process_messages(messages, sid, counts)
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            self._record(
+                "litellm.pre_call",
+                data,
+                user_api_key_dict,
+                counts,
+                blocked=True,
+                categories=detail.get("categories", ()),
+            )
+            raise
+        self._record("litellm.pre_call", data, user_api_key_dict, counts)
+        return data
+
+    def _process_messages(self, messages: list, sid: str | None, counts: Counter) -> None:
         for msg in messages:
             if not isinstance(msg, dict):
                 continue
@@ -176,22 +243,21 @@ class KawalLMGuardrail(CustomGuardrail):
             for call in msg.get("tool_calls") or []:
                 fn = call.get("function") if isinstance(call, dict) else None
                 if isinstance(fn, dict) and isinstance(fn.get("arguments"), str):
-                    fn["arguments"] = self._mask_arguments(fn["arguments"], sid, scan)
+                    fn["arguments"] = self._mask_arguments(fn["arguments"], sid, scan, counts)
             legacy = msg.get("function_call")  # deprecated OpenAI field, still sent by some clients
             if isinstance(legacy, dict) and isinstance(legacy.get("arguments"), str):
-                legacy["arguments"] = self._mask_arguments(legacy["arguments"], sid, scan)
+                legacy["arguments"] = self._mask_arguments(legacy["arguments"], sid, scan, counts)
             content = msg.get("content")
             if isinstance(content, str):
                 if scan:
                     self._check(content)
-                msg["content"] = self.engine.mask_pii(content, sid)
+                msg["content"] = self._mask_text(content, sid, counts)
             elif isinstance(content, list):
                 for part in content:
                     if isinstance(part, dict) and part.get("type") == "text" and isinstance(part.get("text"), str):
                         if scan:
                             self._check(part["text"])
-                        part["text"] = self.engine.mask_pii(part["text"], sid)
-        return data
+                        part["text"] = self._mask_text(part["text"], sid, counts)
 
     # ------------------------------------------------------------ post-call
     async def async_post_call_success_hook(
@@ -201,16 +267,18 @@ class KawalLMGuardrail(CustomGuardrail):
         response: Any,
     ) -> Any:
         sid = self._session(data, create=False)
+        counts: Counter = Counter()
         for choice in getattr(response, "choices", None) or []:
             message = getattr(choice, "message", None)
             if message is None:
                 continue
             if isinstance(getattr(message, "content", None), str):
-                message.content = self._process_output(message.content, sid)
+                message.content = self._process_output(message.content, sid, counts)
             for tc in getattr(message, "tool_calls", None) or []:
                 fn = getattr(tc, "function", None)
                 if fn is not None and isinstance(getattr(fn, "arguments", None), str) and sid:
                     fn.arguments = self.engine.unmask(fn.arguments, sid)
+        self._record("litellm.post_call", data, user_api_key_dict, counts)
         return response
 
     async def async_post_call_streaming_iterator_hook(
@@ -220,6 +288,7 @@ class KawalLMGuardrail(CustomGuardrail):
         request_data: dict,
     ):
         sid = self._session(request_data, create=False)
+        counts: Counter = Counter()
         buffer = ""
         pending = None
 
@@ -227,7 +296,7 @@ class KawalLMGuardrail(CustomGuardrail):
             nonlocal buffer
             if final:
                 ready, buffer = buffer, ""
-                return self._process_output(ready, sid) if ready else ""
+                return self._process_output(ready, sid, counts) if ready else ""
             if len(buffer) <= _HOLDBACK:
                 return ""
             limit = len(buffer) - _HOLDBACK
@@ -239,7 +308,7 @@ class KawalLMGuardrail(CustomGuardrail):
             if cut <= 0:
                 return ""
             ready, buffer = buffer[:cut], buffer[cut:]
-            return self._process_output(ready, sid)
+            return self._process_output(ready, sid, counts)
 
         def delta_of(chunk: Any) -> Any:
             choices = getattr(chunk, "choices", None) or []
@@ -260,3 +329,4 @@ class KawalLMGuardrail(CustomGuardrail):
             if tail and delta is not None:
                 delta.content = (getattr(delta, "content", None) or "") + tail
             yield pending
+        self._record("litellm.post_call", request_data, user_api_key_dict, counts)
