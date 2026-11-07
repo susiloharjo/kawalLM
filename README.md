@@ -10,6 +10,8 @@
 KawalLM memaskir PII lokal (NIK, NPWP, NIP, No. HP, rekening bank, BPJS, NISN, paspor, SIM, plat nomor, alamat IP) dengan **validasi semantik deterministik**, dan memblokir promosi **judol/pinjol ilegal**, **ujaran kebencian SARA**, serta **prompt injection berbahasa Indonesia** — tanpa GPU, tanpa network call, drop-in untuk **LiteLLM Proxy**, **Presidio**, dan **FastAPI**.
 
 > ⚠️ Status: **alpha**. Deteksi bukan jaminan kepatuhan hukum. Lakukan review untuk penggunaan berisiko tinggi.
+>
+> KawalLM **bukan guardrail umum**. Cakupannya PII Indonesia dan pola safety yang eksplisit (judol/pinjol, SARA, injection). Tidak ada deteksi semantik untuk pertanyaan berbahaya, kekerasan umum, self-harm, konten seksual, halusinasi, atau relevansi topik. Untuk itu, pasang classifier tambahan; lihat [Keterbatasan](#keterbatasan-jujur).
 
 ---
 
@@ -130,7 +132,7 @@ guardrails:
 | Hook | Perilaku |
 |---|---|
 | `pre_call` | Safety check pada pesan **role user** (system prompt tidak dicek agar "jangan bocorkan system prompt" tidak memicu blokir) → HTTP 400. PII dimaskir di **semua role**, termasuk multimodal text parts dan argumen `tool_calls` / `function_call` (JSON tetap valid). |
-| `post_call` | PII baru dari model dimaskir (*output leakage*), lalu token `<ID_X_n>` milik pemanggil dikembalikan (reversible). Argumen `tool_calls` juga di-de-mask. |
+| `post_call` | PII baru dari model dimaskir (*output leakage*), lalu placeholder `<ID_X_n_nonce>` milik pemanggil dikembalikan (reversible). Argumen `tool_calls` dan `function_call`, termasuk streaming, juga diproses dengan aturan yang sama. |
 | streaming | Sama, dengan *hold-back buffer* 64 karakter agar nilai yang terpotong antar chunk tetap tertangkap. |
 
 Docker siap jalan (LiteLLM + KawalLM):
@@ -190,22 +192,25 @@ Default **blocking**: `JUDOL_PINJOL`, `SARA_HATE_SPEECH`, `JAILBREAK`. `TOXIC_SL
 
 ## Benchmark
 
-`python benchmarks/bench_latency.py` — safety scan + PII mask per payload, 1 core, Intel Xeon @ 2.1 GHz, Python 3.13, payload sintetis (~1 PII per 50 kata):
+`python benchmarks/bench_latency.py --words <n> --iterations 2000` — safety scan + PII mask per payload, 1 core, Intel Xeon Silver 4416+ @ 2.0 GHz (mesin pengembangan), Python 3.12, payload sintetis (~1 PII per 50 kata):
 
 | Kata / payload | p50 | p95 | p99 | Throughput / core | Peak RSS |
 |---:|---:|---:|---:|---:|---:|
-| 100 | 0.30 ms | 0.47 ms | 0.56 ms | ~2.970 req/s | 21 MB |
-| 500 | 1.22 ms | 1.45 ms | 2.16 ms | ~780 req/s | 21 MB |
-| 1.000 | 2.36 ms | 2.83 ms | 5.3 ms | ~400 req/s | 21 MB |
+| 100 | 0.18 ms | 0.21 ms | 0.24 ms | ~5.400 req/s | 28 MB |
+| 500 | 0.81 ms | 0.86 ms | 0.88 ms | ~1.250 req/s | 28 MB |
+| 1.000 | 1.60 ms | 1.68 ms | 1.70 ms | ~630 req/s | 28 MB |
+
+Angka ini hasil satu mesin pengembangan. Jalankan benchmark di mesin target sebelum mengandalkannya; angka di CI (artifact `benchmark`) juga bisa dijadikan acuan.
 
 **vs NFR PRD:** p95 ≤ 5 ms @1.000 kata ✅ · RAM < 120 MB ✅ · zero telemetry ✅ · coverage ≥ 90% ✅ (gate CI).
-Throughput ≥ 1.500 req/s pada 2 vCPU **tercapai untuk prompt pendek (≤ ~200 kata)**, tidak untuk payload 1.000 kata (~800 req/s di 2 core). Dua target ini secara matematis tidak bisa sama-sama terpenuhi: p95 5 ms per request = maks ~200 req/s per core.
 
 ## Keterbatasan (jujur)
 
-- **Bukan classifier.** Dictionary + rule menangkap promosi spam, slur, dan pola injection yang eksplisit. Pada dataset [IndoSafety](https://github.com/falensiazmi/IndoSafety) (3.014 *pertanyaan berbahaya* — kategori yang berbeda), hanya 0,3% diblokir. Pertanyaan berbahaya semantik butuh model (Sprint 4: ONNX classifier). Jalankan sendiri: `python scripts/eval_indosafety.py`.
+- **Bukan classifier.** Dictionary + rule menangkap promosi spam, slur, dan pola injection yang eksplisit. Pada dataset [IndoSafety](https://github.com/falensiazmi/IndoSafety) (3.014 *pertanyaan berbahaya* — kategori yang berbeda), hanya 0,3% diblokir, diukur pada v0.1.0 dan belum diukur ulang. Pertanyaan berbahaya semantik butuh model (Sprint 4: ONNX classifier). Jalankan sendiri: `python scripts/eval_indosafety.py`.
+- **Di luar cakupan:** kekerasan umum, self-harm, konten seksual, halusinasi, dan relevansi topik. Tidak ada deteksi untuk injection yang tidak memakai kata kunci atau kalimat parafrasa.
+- **Bahasa:** cakupan terbaik untuk Bahasa Indonesia. Bahasa Inggris hanya untuk pola injection dan judol yang umum.
 - **Kamus bahasa daerah masih seed** dan perlu verifikasi penutur asli — ini area kontribusi utama.
-- **False positive** diukur pada set kalimat wajar `tests/data/benign_id.txt` (~110 kalimat buatan maintainer, target < 1%, saat ini 0 terdampak). Set ini kecil dan ditulis oleh maintainer; kalimat nyata dari pengguna sangat kami butuhkan.
+- **False positive** diukur pada set kalimat wajar `tests/data/benign_id.txt` (lebih dari 100 kalimat buatan maintainer, target < 1%, saat ini 0 terdampak). Set ini kecil dan ditulis oleh maintainer; kalimat nyata dari pengguna sangat kami butuhkan.
 - Validasi NIK/NPWP memeriksa **format**, bukan keberadaan orangnya.
 - Yang **tidak** terdeteksi: telepon rumah dengan kode area di luar daftar `AREA_CODES` (kota besar dan ibu kota kabupaten; tambahkan lewat PR) atau tanpa pemisah dan tanpa kata kunci (`telp`, `fax`), rekening tanpa kata konteks (mis. "Kirim ke 1234567890", disengaja agar nomor biasa tidak ikut termaskir), serta NIK/NPWP dengan tanggal atau checksum tidak valid (aman dari false positive, tetapi salah ketik lolos).
 - Vault reversible default bersifat in-memory per proses; untuk multi-replica gunakan sticky session, `session_map` stateless, atau implementasikan protokol `VaultBackend`.
