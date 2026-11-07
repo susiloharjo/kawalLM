@@ -1,4 +1,7 @@
 # syntax=docker/dockerfile:1
+# ARGs used in FROM must be declared before the first FROM
+ARG LITELLM_IMAGE=ghcr.io/berriai/litellm:main-stable
+
 # Stage 1 — build the KawalLM wheel
 FROM python:3.12-slim AS build
 WORKDIR /src
@@ -8,7 +11,6 @@ COPY src ./src
 RUN python -m build --wheel --outdir /dist
 
 # Stage 2 — LiteLLM Proxy + KawalLM
-ARG LITELLM_IMAGE=ghcr.io/berriai/litellm:main-stable
 FROM ${LITELLM_IMAGE}
 COPY --from=build /dist/*.whl /tmp/
 RUN pip install --no-cache-dir /tmp/kawallm-*.whl && rm -f /tmp/kawallm-*.whl \
