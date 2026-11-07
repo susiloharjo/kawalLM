@@ -28,7 +28,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Core tests (no optional deps)
         run: |
-          uv venv && uv pip install -e ".[dev]"
+          uv venv --clear && uv pip install -e ".[dev]"
           uv run pytest
       - name: Integration tests (LiteLLM + Presidio)
         if: matrix.python == '3.12'
@@ -44,7 +44,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
-      - run: uv venv && uv pip install -e . && uv run python benchmarks/bench_latency.py --iterations 1000 --json | tee bench.json
+      - run: uv venv --clear && uv pip install -e . && uv run python benchmarks/bench_latency.py --iterations 1000 --json | tee bench.json
       - uses: actions/upload-artifact@v4
         with:
           name: benchmark

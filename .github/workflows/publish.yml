@@ -15,7 +15,7 @@ jobs:
         run: |
           v=$(python -c "import re,pathlib;print(re.search(r'__version__ = \"(.+?)\"', pathlib.Path('src/kawallm/__init__.py').read_text()).group(1))")
           [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} != version v$v"; exit 1; }
-      - run: uv venv && uv pip install -e ".[dev,litellm,presidio]"
+      - run: uv venv --clear && uv pip install -e ".[dev,litellm,presidio]"
       - run: uv run pytest --cov --cov-fail-under=90
 
   pypi:
