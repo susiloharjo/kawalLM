@@ -2,7 +2,9 @@
 
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikuti [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] - 2026-11-07
+
+Lingkup rilis ini: deteksi PII Indonesia dan pola safety yang eksplisit. Bukan guardrail umum (tidak ada classifier semantik); lihat *Keterbatasan* di README.
 
 ### Changed (breaking, mode reversible)
 - Placeholder reversible sekarang memuat nonce acak per sesi: `<ID_NIK_1>` menjadi `<ID_NIK_1_a3f2c9>`. Mode `token`/`redact`/`partial` tidak berubah. Peta sesi lama (0.1.x) tetap bisa dipulihkan lewat pencocokan persis, tetapi token baru selalu bernonce. Alasan: teks yang diketik user atau peta sesi yang salah dulu bisa memulihkan data asli tanpa error.
