@@ -9,10 +9,14 @@ from typing import Any
 # Priority when two detections overlap: higher wins.
 PRIORITY = {
     "ID_NIK": 100,
+    "ID_NIP": 95,
     "ID_NPWP": 90,
+    "ID_PASSPORT": 85,
     "ID_BPJS_KES": 80,
     "ID_BPJS_TK": 75,
     "ID_BANK_ACCOUNT": 70,
+    "ID_NISN": 66,
+    "ID_SIM": 65,
     "ID_PHONE": 60,
     "EMAIL": 55,
     "ID_PLATE": 40,

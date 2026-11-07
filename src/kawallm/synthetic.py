@@ -54,6 +54,30 @@ def bpjs_kesehatan(seed: int | None = None) -> str:
     return "000" + "".join(str(r.randint(0, 9)) for _ in range(10))
 
 
+def nip(seed: int | None = None) -> str:
+    """18-digit NIP: birth date + appointment month + gender + serial."""
+    r = _rng(seed)
+    year = r.randint(1960, 2000)
+    tmt_year = year + r.randint(20, 30)
+    return (
+        f"{year}{r.randint(1, 12):02d}{r.randint(1, 28):02d}"
+        f"{tmt_year}{r.randint(1, 12):02d}{r.randint(1, 2)}{r.randint(1, 999):03d}"
+    )
+
+
+def nisn(seed: int | None = None) -> str:
+    return digits(10, seed)
+
+
+def passport(seed: int | None = None) -> str:
+    r = _rng(seed)
+    return r.choice("ABCDEFGHJKLMNPRSTUVWXYZ") + digits(7, seed)
+
+
+def sim(seed: int | None = None) -> str:
+    return digits(12, seed)
+
+
 def digits(n: int, seed: int | None = None) -> str:
     r = _rng(seed)
     return str(r.randint(1, 9)) + "".join(str(r.randint(0, 9)) for _ in range(n - 1))

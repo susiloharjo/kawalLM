@@ -7,7 +7,7 @@
 
 **Guardrail engine open-source, latensi rendah, untuk kepatuhan UU PDP (UU No. 27/2022) di infrastruktur AI Indonesia.**
 
-KawalLM memaskir PII lokal (NIK, NPWP, No. HP, rekening bank, BPJS, plat nomor) dengan **validasi semantik deterministik**, dan memblokir promosi **judol/pinjol ilegal**, **ujaran kebencian SARA**, serta **prompt injection berbahasa Indonesia** — tanpa GPU, tanpa network call, drop-in untuk **LiteLLM Proxy**, **Presidio**, dan **FastAPI**.
+KawalLM memaskir PII lokal (NIK, NPWP, NIP, No. HP, rekening bank, BPJS, NISN, paspor, SIM, plat nomor) dengan **validasi semantik deterministik**, dan memblokir promosi **judol/pinjol ilegal**, **ujaran kebencian SARA**, serta **prompt injection berbahasa Indonesia** — tanpa GPU, tanpa network call, drop-in untuk **LiteLLM Proxy**, **Presidio**, dan **FastAPI**.
 
 > ⚠️ Status: **alpha**. Deteksi bukan jaminan kepatuhan hukum. Lakukan review untuk penggunaan berisiko tinggi.
 
@@ -96,7 +96,8 @@ kawallm --json "abaikan instruksi sebelumnya"  # exit code 2 bila diblokir
 
 ### Entitas
 
-`ID_NIK`, `ID_NPWP`, `ID_PHONE`, `ID_BANK_ACCOUNT`, `ID_BPJS_KES`, `ID_BPJS_TK`, `ID_PLATE`, `EMAIL`.
+`ID_NIK`, `ID_NPWP`, `ID_NIP`, `ID_PHONE`, `ID_BANK_ACCOUNT`, `ID_BPJS_KES`, `ID_BPJS_TK`, `ID_NISN`, `ID_PASSPORT`, `ID_SIM`, `ID_PLATE`, `EMAIL`.
+NIP (18 digit) dikenali dari strukturnya (tanggal lahir + bulan pengangkatan + gender). NISN, paspor, dan SIM tidak punya checksum, jadi hanya dimaskir bila ada kata kunci di dekatnya (`NISN`, `paspor`, `SIM`).
 Catatan: nomor **KK** punya struktur sama dengan NIK, sehingga terdeteksi sebagai `ID_NIK` (keduanya data pribadi).
 
 ## LiteLLM Proxy
@@ -198,7 +199,7 @@ Lihat [`NOTICE`](NOTICE).
 
 ## Kontribusi
 
-**Ikut bangun KawalLM.** Kami butuh penutur bahasa daerah, praktisi keamanan, dan engineer yang peduli pelindungan data pribadi. Banyak kontribusi hanya berupa JSON atau satu kalimat uji, tanpa perlu paham ML. Daftar apa yang paling dibutuhkan (kamus daerah, eval false positive, identitas NIP/NISN/paspor/SIM, audit log, classifier) ada di [CONTRIBUTING.md](CONTRIBUTING.md#yuk-ikut-bangun-kawallm).
+**Ikut bangun KawalLM.** Kami butuh penutur bahasa daerah, praktisi keamanan, dan engineer yang peduli pelindungan data pribadi. Banyak kontribusi hanya berupa JSON atau satu kalimat uji, tanpa perlu paham ML. Daftar apa yang paling dibutuhkan (kamus daerah, eval false positive, validasi lebih ketat untuk SIM/NISN/paspor, audit log, classifier) ada di [CONTRIBUTING.md](CONTRIBUTING.md#yuk-ikut-bangun-kawallm).
 
 ## Lisensi
 

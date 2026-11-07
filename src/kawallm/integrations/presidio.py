@@ -26,6 +26,10 @@ SUPPORTED_ENTITIES = [
     "ID_BPJS_KES",
     "ID_BPJS_TK",
     "ID_PLATE",
+    "ID_NIP",
+    "ID_NISN",
+    "ID_PASSPORT",
+    "ID_SIM",
 ]
 
 _DETECTOR_FOR = {

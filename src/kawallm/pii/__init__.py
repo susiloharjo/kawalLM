@@ -7,6 +7,7 @@ import re
 from .bank import find_bank_account
 from .base import PIIMatch, resolve_overlaps
 from .bpjs import find_bpjs
+from .identity import find_nip, find_nisn, find_passport, find_sim, validate_nip
 from .nik import find_nik, parse_nik, validate_nik
 from .npwp import find_npwp, validate_npwp
 from .phone import find_phone, phone_operator
@@ -28,6 +29,10 @@ DETECTORS = {
     "ID_BANK_ACCOUNT": find_bank_account,
     "ID_BPJS": find_bpjs,
     "ID_PLATE": find_plate,
+    "ID_NIP": find_nip,
+    "ID_NISN": find_nisn,
+    "ID_PASSPORT": find_passport,
+    "ID_SIM": find_sim,
     "EMAIL": find_email,
 }
 
@@ -64,6 +69,11 @@ __all__ = [
     "find_bank_account",
     "find_bpjs",
     "find_plate",
+    "find_nip",
+    "find_nisn",
+    "find_passport",
+    "find_sim",
+    "validate_nip",
     "find_email",
     "ALL_ENTITIES",
 ]
