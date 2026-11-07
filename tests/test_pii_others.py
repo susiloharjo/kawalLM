@@ -87,3 +87,9 @@ def test_detect_pii_fast_path_and_filter():
     assert detect_pii("halo semua apa kabar") == []
     t = "HP 081234567890 email a@b.co"
     assert [m.entity for m in detect_pii(t, ("EMAIL",))] == ["EMAIL"]
+
+
+def test_bank_keyword_farther_than_100_chars_still_counts():
+    """The keyword window must stay at 120 characters; a 100-character window missed 'transfer' here."""
+    text = "transfer" + " 939692975:0535707991268485049019681988039238699900148-1193936124509742985915" + " 56960003581"
+    assert [m.text for m in find_bank_account(text)] == ["56960003581"]
