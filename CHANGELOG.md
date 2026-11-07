@@ -19,6 +19,7 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikut
 - Detektor identitas baru: `ID_NIP` (18 digit, divalidasi tanggal lahir, bulan pengangkatan, gender), `ID_NISN`, `ID_PASSPORT`, `ID_SIM` (ketiganya wajib kata kunci di dekat nomor). Termasuk generator `kawallm.synthetic.nip/nisn/passport/sim` dan dukungan Presidio.
 
 ### Fixed
+- Streaming LiteLLM: e-mail di aliran panjang tanpa spasi tidak lagi terpotong di batas potongan (token berisi `@` ditahan sampai selesai, dengan batas aman).
 - Tool-call output dari model kini dimaskir (termasuk streaming); `restore_output=False` tidak lagi memulihkan argumen tool.
 - Streaming LiteLLM: holdback dan konteks per pilihan (`n > 1`), chunk penutup berisi `choices=[]` tidak menghilangkan teks tertahan, dan konteks kata kunci (mis. `rekening`) lintas potongan tetap berlaku.
 - Field JSON dipakai sebagai konteks deteksi (`{"rekening": "1234567890"}` termask); injeksi yang dipecah di beberapa text part pada satu pesan kini diperiksa gabungan.

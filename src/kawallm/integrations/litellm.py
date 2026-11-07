@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import uuid
 from collections import Counter
 from typing import Any
@@ -40,6 +41,7 @@ from kawallm.placeholders import _LOOSE_RE
 
 _SESSION_KEY = "kawallm_session"
 _HOLDBACK = 64  # >= kawallm.placeholders.MAX_PLACEHOLDER_LEN
+_EMAIL_HOLD_CAP = 2048  # longest whitespace-free run kept back while it may still be an e-mail address
 
 
 def _as_bool(v: Any) -> bool:
@@ -438,6 +440,14 @@ class _ChoiceStream:
                         break
                 while cut > 0 and (buf[cut - 1].isdigit() or buf[cut - 1] in "+-."):
                     cut -= 1
+                # Never split an e-mail-like token: the detector could not see it whole. Hold the text until
+                # the token ends (bounded, so a pathological stream still makes progress).
+                left = re.search(r"[\w.+@-]*\Z", buf[:cut]).start()
+                right = cut + re.match(r"[\w.+@-]*", buf[cut:]).end()
+                if "@" in buf[left:right]:
+                    if len(buf) <= _EMAIL_HOLD_CAP:
+                        return ""
+                    cut = left if left > 0 else cut
             if cut <= 0:
                 return ""
             ready, self.buffer = buf[:cut], buf[cut:]

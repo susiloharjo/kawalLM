@@ -232,3 +232,13 @@ def test_overlap_resolution_keeps_priority():
         [PIIMatch("ID_PHONE", 0, 12, "a"), PIIMatch("ID_NIK", 4, 20, "b"), PIIMatch("EMAIL", 25, 30, "c")]
     )
     assert [m.entity for m in kept] == ["ID_NIK", "EMAIL"]
+
+
+async def test_email_is_not_split_by_long_whitespace_free_stream():
+    """A forced cut in a long stream must not separate an e-mail address into two undetectable halves."""
+    g = G()
+    email = "budi.santoso@contoh.co.id"
+    text = "x" * 200 + "-" + email + "-" + "y" * 200
+    pieces = [text[i : i + 7] for i in range(0, len(text), 7)]
+    out = await collect(g, [chunk(p) for p in pieces])
+    assert "contoh" not in out[0] and "<EMAIL>" in out[0]
