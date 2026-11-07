@@ -1,4 +1,4 @@
-"""Indonesian mobile number detection with operator-prefix validation.
+"""Indonesian mobile number detection with operator-prefix validation (landlines: see ``landline.py``).
 
 Accepts +62 8xx, 62 8xx and 08xx forms with optional spaces / dots / dashes.
 Normalised local length (starting with 08) must be 10–13 digits and the 4-digit
@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 
 from .base import PIIMatch, digits_only
+from .landline import find_landline
 
 PHONE_RE = re.compile(r"(?<![\d+])(?:\+62|62|0)[\s.\-]?8\d{1,2}(?:[\s.\-]?\d){6,10}(?![\d])")
 
@@ -46,4 +47,4 @@ def find_phone(text: str) -> list[PIIMatch]:
         op = phone_operator(m.group())
         if op:
             out.append(PIIMatch("ID_PHONE", m.start(), m.end(), m.group(), 1.0, {"operator": op}))
-    return out
+    return out + find_landline(text)

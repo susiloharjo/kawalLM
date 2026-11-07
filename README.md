@@ -19,7 +19,7 @@ KawalLM memaskir PII lokal (NIK, NPWP, NIP, No. HP, rekening bank, BPJS, NISN, p
 |---|---|---|
 | NIK 16 digit | Tidak dikenali / regex mentah → resi & barcode ikut terblokir | Validasi kode wilayah Kemendagri (7.879 kecamatan, 2016–2025) + tanggal lahir (DD+40 untuk perempuan) + serial ≠ 0000 |
 | NPWP 15/16 digit | Tidak ada | Checksum Luhn digit ke-9, format bertitik atau keyword-gated |
-| No. HP | Generic | Prefix operator (Telkomsel, Indosat, Tri, XL, Axis, Smartfren) |
+| No. HP & telepon rumah | Generic | Prefix operator (Telkomsel, Indosat, Tri, XL, Axis, Smartfren); telepon rumah `(021) 5551234`, `021-5551234`, `+62 21 5551234` dengan kode area valid |
 | NIP (PNS) | Tidak ada | 18 digit divalidasi tanggal lahir, bulan pengangkatan (usia ≥ 17), dan gender |
 | NISN, paspor, SIM | Tidak ada | Format + kata kunci di dekat nomor (tanpa checksum publik, jadi resi/barcode tidak ikut termaskir) |
 | Rekening bank | Tidak ada | Proximity 5 kata + panjang per bank (BCA 10, Mandiri 13, BRI 15, …) |
@@ -69,9 +69,9 @@ guard.deanonymize("Baik, terkirim ke <ID_PHONE_1_a3f2c9>.", session_map)
 Placeholder berisi **nonce acak per sesi** (`a3f2c9`). Teks yang diketik user (`<ID_NIK_1>`) atau placeholder dari sesi lain tidak akan pernah memulihkan data, dan placeholder yang ditulis ulang LLM (huruf kecil, tanpa kurung, `&lt;…&gt;`, `[…]`) tetap dipulihkan. Untuk respons streaming:
 
 ```python
-d = guard.deanonymize_stream(session_map)    # StreamDeanonymizer
+d = guard.deanonymize_stream(session_map)  # StreamDeanonymizer
 for chunk in llm_stream:
-    print(d.feed(chunk), end="")             # menahan buffer sampai placeholder utuh
+    print(d.feed(chunk), end="")  # menahan buffer sampai placeholder utuh
 print(d.flush())
 ```
 
@@ -206,7 +206,7 @@ Throughput ≥ 1.500 req/s pada 2 vCPU **tercapai untuk prompt pendek (≤ ~200 
 - **Kamus bahasa daerah masih seed** dan perlu verifikasi penutur asli — ini area kontribusi utama.
 - **False positive** diukur pada set kalimat wajar `tests/data/benign_id.txt` (~110 kalimat buatan maintainer, target < 1%, saat ini 0 terdampak). Set ini kecil dan ditulis oleh maintainer; kalimat nyata dari pengguna sangat kami butuhkan.
 - Validasi NIK/NPWP memeriksa **format**, bukan keberadaan orangnya.
-- Yang **tidak** terdeteksi: telepon rumah (mis. `(021) 5551234`), rekening tanpa kata konteks (mis. "Kirim ke 1234567890", disengaja agar nomor biasa tidak ikut termaskir), serta NIK/NPWP dengan tanggal atau checksum tidak valid (aman dari false positive, tetapi salah ketik lolos).
+- Yang **tidak** terdeteksi: telepon rumah dengan kode area di luar daftar `AREA_CODES` (kota besar dan ibu kota kabupaten; tambahkan lewat PR) atau tanpa pemisah dan tanpa kata kunci (`telp`, `fax`), rekening tanpa kata konteks (mis. "Kirim ke 1234567890", disengaja agar nomor biasa tidak ikut termaskir), serta NIK/NPWP dengan tanggal atau checksum tidak valid (aman dari false positive, tetapi salah ketik lolos).
 - Vault reversible bersifat in-memory per proses; untuk multi-replica gunakan sticky session.
 - Audit log baru tersedia untuk `KawalLM.scan()` dan guardrail LiteLLM; middleware FastAPI belum mencatat event.
 - Safety scan tidak memeriksa argumen `tool_calls` kecuali role `assistant` ditambahkan ke `scan_roles` (PII di argumen selalu dimaskir).
