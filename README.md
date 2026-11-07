@@ -1,10 +1,15 @@
 # KawalLM 🇮🇩
 
+[![PyPI](https://img.shields.io/pypi/v/kawallm.svg)](https://pypi.org/project/kawallm/)
+[![Python](https://img.shields.io/pypi/pyversions/kawallm.svg)](https://pypi.org/project/kawallm/)
+[![CI](https://github.com/susiloharjo/kawalLM/actions/workflows/ci.yml/badge.svg)](https://github.com/susiloharjo/kawalLM/actions/workflows/ci.yml)
+[![License](https://img.shields.io/pypi/l/kawallm.svg)](LICENSE)
+
 **Guardrail engine open-source, latensi rendah, untuk kepatuhan UU PDP (UU No. 27/2022) di infrastruktur AI Indonesia.**
 
 KawalLM memaskir PII lokal (NIK, NPWP, No. HP, rekening bank, BPJS, plat nomor) dengan **validasi semantik deterministik**, dan memblokir promosi **judol/pinjol ilegal**, **ujaran kebencian SARA**, serta **prompt injection berbahasa Indonesia** — tanpa GPU, tanpa network call, drop-in untuk **LiteLLM Proxy**, **Presidio**, dan **FastAPI**.
 
-> ⚠️ Status: **alpha (v0.1.0)**. Deteksi bukan jaminan kepatuhan hukum. Lakukan review untuk penggunaan berisiko tinggi.
+> ⚠️ Status: **alpha**. Deteksi bukan jaminan kepatuhan hukum. Lakukan review untuk penggunaan berisiko tinggi.
 
 ---
 
