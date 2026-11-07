@@ -19,6 +19,15 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikut
 - Detektor identitas baru: `ID_NIP` (18 digit, divalidasi tanggal lahir, bulan pengangkatan, gender), `ID_NISN`, `ID_PASSPORT`, `ID_SIM` (ketiganya wajib kata kunci di dekat nomor). Termasuk generator `kawallm.synthetic.nip/nisn/passport/sim` dan dukungan Presidio.
 
 ### Fixed
+- Tool-call output dari model kini dimaskir (termasuk streaming); `restore_output=False` tidak lagi memulihkan argumen tool.
+- Streaming LiteLLM: holdback dan konteks per pilihan (`n > 1`), chunk penutup berisi `choices=[]` tidak menghilangkan teks tertahan, dan konteks kata kunci (mis. `rekening`) lintas potongan tetap berlaku.
+- Field JSON dipakai sebagai konteks deteksi (`{"rekening": "1234567890"}` termask); injeksi yang dipecah di beberapa text part pada satu pesan kini diperiksa gabungan.
+- Normalisasi: pemisah berbeda antarkata tidak lagi menggabungkan kata (`s.l.o.t g.4.c.0.r` -> `slot gacor`).
+- Jailbreak urutan kata Inggris (`ignore previous instructions`) kini terblokir.
+- Karakter zero-width di dalam nomor (`0812\u200b34567890`) tidak lagi lolos dari masking PII.
+- Frasa ambigu `langsung cair` dan `link alternatif` tidak lagi memblokir sendiri; kalimat edukasi kini mendapat bobot separuh untuk istilah ambigu.
+- Vault: sesi yang sudah kedaluwarsa tidak lagi menghidupkan mapping lama saat dipakai ulang.
+- Penyelesaian overlap PII kini O(n log n) (sebelumnya kuadratik).
 - Evasion menggunakan karakter *zero-width* (`\u200b`, `\u200c`, `\u200d`, `\ufeff`, `\u00ad`) kini dihapus saat normalisasi safety.
 - Detektor rekening bank tidak lagi mencocokkan angka yang mencampur separator berbeda (mis. tanggal dan jam `2026-11-07 20.45` di dekat kata `transfer`).
 - Buffer streaming LiteLLM kini memiliki batas fallback aman untuk teks panjang tanpa spasi (URL panjang, base64, JSON rapat).

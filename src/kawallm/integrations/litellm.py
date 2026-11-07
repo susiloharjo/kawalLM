@@ -36,7 +36,7 @@ from litellm.integrations.custom_guardrail import CustomGuardrail
 
 from kawallm.audit import AuditLog, JsonlFileSink, logging_sink
 from kawallm.core import KawalLMEngine
-from kawallm.placeholders import _LOOSE_RE, StreamDeanonymizer
+from kawallm.placeholders import _LOOSE_RE
 
 _SESSION_KEY = "kawallm_session"
 _HOLDBACK = 64  # >= kawallm.placeholders.MAX_PLACEHOLDER_LEN
@@ -131,9 +131,15 @@ class KawalLMGuardrail(CustomGuardrail):
                 },
             )
 
-    def _mask_text(self, text: str, sid: str | None, counts: Counter | None, mode: str | None = None) -> str:
-        """Mask ``text`` and add the entity types found to ``counts`` (used only for the audit trail)."""
-        res = self.engine.mask(text, sid, mode)
+    def _mask_text(
+        self, text: str, sid: str | None, counts: Counter | None, mode: str | None = None, context: str = ""
+    ) -> str:
+        """Mask ``text`` and add the entity types found to ``counts`` (used only for the audit trail).
+
+        ``context`` precedes ``text`` (a JSON field name, the previous stream chunk): detectors that depend on a
+        nearby keyword see it, but it is not part of the result.
+        """
+        res = self.engine.mask(text, sid, mode, context)
         if counts is not None:
             counts.update(m.entity for m in res.entities)
         return res.text
@@ -167,23 +173,40 @@ class KawalLMGuardrail(CustomGuardrail):
             context=context,
         )
 
-    def _mask_json_value(self, value: Any, sid: str | None, scan: bool, counts: Counter | None = None) -> Any:
-        """Mask (and optionally safety-scan) every string/int leaf of a parsed JSON value."""
+    def _mask_json_value(
+        self,
+        value: Any,
+        sid: str | None,
+        scan: bool,
+        counts: Counter | None = None,
+        mode: str | None = None,
+        hint: str = "",
+    ) -> Any:
+        """Mask (and optionally safety-scan) every string/int leaf of a parsed JSON value.
+
+        ``hint`` is the nearest field name: ``{"rekening": "1234567890"}`` is masked as "rekening 1234567890",
+        so keyword-gated detectors (bank account, NPWP, passport, ...) work on JSON values too.
+        """
         if isinstance(value, bool):
             return value
         if isinstance(value, str | int):
             text = str(value)
             if scan and isinstance(value, str):
                 self._check(text)
-            masked = self._mask_text(text, sid, counts)
+            masked = self._mask_text(text, sid, counts, mode, hint)
             return value if masked == text else masked
         if isinstance(value, list):
-            return [self._mask_json_value(v, sid, scan, counts) for v in value]
+            return [self._mask_json_value(v, sid, scan, counts, mode, hint) for v in value]
         if isinstance(value, dict):
-            return {k: self._mask_json_value(v, sid, scan, counts) for k, v in value.items()}
+            return {
+                k: self._mask_json_value(v, sid, scan, counts, mode, f"{k} " if isinstance(k, str) else hint)
+                for k, v in value.items()
+            }
         return value
 
-    def _mask_arguments(self, args: str, sid: str | None, scan: bool, counts: Counter | None = None) -> str:
+    def _mask_arguments(
+        self, args: str, sid: str | None, scan: bool, counts: Counter | None = None, mode: str | None = None
+    ) -> str:
         """Tool-call arguments are a JSON string; mask leaves so the result stays valid JSON.
 
         A bare number such as ``{"nik": 3171011501900001}`` becomes the string ``"<ID_NIK>"``.
@@ -194,18 +217,37 @@ class KawalLMGuardrail(CustomGuardrail):
         except ValueError:
             if scan:
                 self._check(args)
-            return self._mask_text(args, sid, counts)
-        masked = self._mask_json_value(parsed, sid, scan, counts)
+            return self._mask_text(args, sid, counts, mode)
+        masked = self._mask_json_value(parsed, sid, scan, counts, mode)
         return args if masked == parsed else json.dumps(masked, ensure_ascii=False)
 
-    def _process_output(self, text: str, sid: str | None, counts: Counter | None = None) -> str:
+    @property
+    def _output_mode(self) -> str:
+        """Masking mode for new PII in a response: plain tokens, never the caller's reversible placeholders."""
+        return "redact" if self.engine.mode == "redact" else "token"
+
+    def _restores(self, sid: str | None) -> bool:
+        return bool(sid) and self.restore_output and self.engine.mode == "reversible"
+
+    def _process_output(self, text: str, sid: str | None, counts: Counter | None = None, context: str = "") -> str:
         if self.mask_output:
-            # Output-leakage protection. Always plain tokens here: new PII produced by the
-            # model is not the caller's to restore.
-            text = self._mask_text(text, None, counts, "redact" if self.engine.mode == "redact" else "token")
-        if sid and self.restore_output and self.engine.mode == "reversible":
+            # Output-leakage protection. New PII produced by the model is not the caller's to restore.
+            text = self._mask_text(text, None, counts, self._output_mode, context)
+        if self._restores(sid):
             text = self.engine.unmask(text, sid)
         return text
+
+    def _process_tool_args(self, args: str, sid: str | None, counts: Counter | None = None) -> str:
+        """Same policy as :meth:`_process_output` for a tool call's JSON arguments (valid JSON is preserved)."""
+        if self.mask_output:
+            args = self._mask_arguments(args, None, False, counts, self._output_mode)
+        if self._restores(sid):
+            args = self.engine.unmask(args, sid)
+        return args
+
+    @property
+    def _tool_args_need_processing(self) -> bool:
+        return self.mask_output or (self.restore_output and self.engine.mode == "reversible")
 
     # ------------------------------------------------------------ pre-call
     async def async_pre_call_hook(
@@ -255,11 +297,20 @@ class KawalLMGuardrail(CustomGuardrail):
                     self._check(content)
                 msg["content"] = self._mask_text(content, sid, counts)
             elif isinstance(content, list):
-                for part in content:
-                    if isinstance(part, dict) and part.get("type") == "text" and isinstance(part.get("text"), str):
-                        if scan:
-                            self._check(part["text"])
-                        part["text"] = self._mask_text(part["text"], sid, counts)
+                parts = [
+                    p
+                    for p in content
+                    if isinstance(p, dict) and p.get("type") == "text" and isinstance(p.get("text"), str)
+                ]
+                if scan:
+                    texts = [p["text"] for p in parts]
+                    if len(texts) > 1:  # a phrase split over several parts must still be seen as one
+                        self._check("".join(texts))
+                        self._check(" ".join(texts))
+                    for t in texts:
+                        self._check(t)
+                for part in parts:
+                    part["text"] = self._mask_text(part["text"], sid, counts)
 
     # ------------------------------------------------------------ post-call
     async def async_post_call_success_hook(
@@ -276,10 +327,11 @@ class KawalLMGuardrail(CustomGuardrail):
                 continue
             if isinstance(getattr(message, "content", None), str):
                 message.content = self._process_output(message.content, sid, counts)
-            for tc in getattr(message, "tool_calls", None) or []:
-                fn = getattr(tc, "function", None)
-                if fn is not None and isinstance(getattr(fn, "arguments", None), str) and sid:
-                    fn.arguments = self.engine.unmask(fn.arguments, sid)
+            calls = [getattr(tc, "function", None) for tc in getattr(message, "tool_calls", None) or []]
+            calls.append(getattr(message, "function_call", None))  # deprecated single-call field
+            for fn in calls:
+                if fn is not None and isinstance(getattr(fn, "arguments", None), str):
+                    fn.arguments = self._process_tool_args(fn.arguments, sid, counts)
         self._record("litellm.post_call", data, user_api_key_dict, counts)
         return response
 
@@ -291,90 +343,138 @@ class KawalLMGuardrail(CustomGuardrail):
     ):
         sid = self._session(request_data, create=False)
         counts: Counter = Counter()
-        buffer = ""
+        states: dict[int, _ChoiceStream] = {}  # one buffer per choice (n > 1)
         pending = None
-        tc_streams: dict[int, tuple[StreamDeanonymizer, Any]] = {}
-
-        def flush_tool_calls(target: Any) -> None:
-            """Emit what the per-call de-anonymizers still hold as extra fragments on ``target``.
-
-            ``target`` must be a delta that has not been yielded yet. Appending to the call's own last
-            fragment is wrong: with parallel tool calls that chunk is long gone. Clients accumulate
-            fragments by ``index``, so a trailing fragment for an earlier index is valid.
-            """
-            extras = []
-            for deanon, last_tc in tc_streams.values():
-                rem = deanon.flush()
-                if rem:
-                    extra = copy.copy(last_tc)
-                    extra.function = copy.copy(last_tc.function)
-                    extra.function.arguments = rem
-                    extras.append(extra)
-            tc_streams.clear()
-            if extras and target is not None:
-                target.tool_calls = [*(getattr(target, "tool_calls", None) or []), *extras]
-
-        def take_ready(final: bool) -> str:
-            nonlocal buffer
-            if final:
-                ready, buffer = buffer, ""
-                return self._process_output(ready, sid, counts) if ready else ""
-            if len(buffer) <= _HOLDBACK:
-                return ""
-            limit = len(buffer) - _HOLDBACK
-            cut = -1
-            for i in range(limit, 0, -1):
-                if buffer[i].isspace() and not buffer[i - 1].isdigit() and buffer[i - 1] not in "+-.":
-                    cut = i
-                    break
-            if cut <= 0 and len(buffer) > _HOLDBACK * 4:
-                # Fallback for long whitespace-free streams (URLs, base64, minified JSON):
-                # cut at limit unless that splits a placeholder candidate or digit run.
-                cut = limit
-                for m in _LOOSE_RE.finditer(buffer):
-                    if m.start() < cut < m.end():
-                        cut = m.start()
-                        break
-                while cut > 0 and (buffer[cut - 1].isdigit() or buffer[cut - 1] in "+-."):
-                    cut -= 1
-            if cut <= 0:
-                return ""
-            ready, buffer = buffer[:cut], buffer[cut:]
-            return self._process_output(ready, sid, counts)
-
-        def delta_of(chunk: Any) -> Any:
-            choices = getattr(chunk, "choices", None) or []
-            return getattr(choices[0], "delta", None) if choices else None
 
         async for chunk in response:
-            delta = delta_of(chunk)
-            if delta is not None:
+            for choice in getattr(chunk, "choices", None) or []:
+                st = states.setdefault(getattr(choice, "index", 0) or 0, _ChoiceStream(self, sid, counts))
+                st.template = choice
+                delta = getattr(choice, "delta", None)
+                if delta is None:
+                    continue
                 if isinstance(getattr(delta, "content", None), str):
-                    buffer += delta.content
-                    delta.content = take_ready(final=False)
-                tcs = getattr(delta, "tool_calls", None)
-                if tcs and sid and self.restore_output and self.engine.mode == "reversible":
-                    for tc in tcs:
-                        fn = getattr(tc, "function", None)
-                        if fn is not None and isinstance(getattr(fn, "arguments", None), str):
-                            idx = getattr(tc, "index", 0) or 0
-                            deanon, _ = tc_streams.get(idx, (None, None))
-                            if deanon is None:
-                                deanon = self.engine.unmask_stream(sid)
-                            fn.arguments = deanon.feed(fn.arguments)
-                            tc_streams[idx] = (deanon, tc)
-                elif tc_streams:
-                    flush_tool_calls(delta)
+                    delta.content = st.feed_text(delta.content)
+                if getattr(delta, "tool_calls", None) and self._tool_args_need_processing:
+                    st.hold_tool_calls(delta.tool_calls)
             if pending is not None:
                 yield pending
             pending = chunk
 
-        tail = take_ready(final=True)
-        if tc_streams:
-            flush_tool_calls(delta_of(pending) if pending is not None else None)
         if pending is not None:
-            delta = delta_of(pending)
-            if tail and delta is not None:
-                delta.content = (getattr(delta, "content", None) or "") + tail
+            for extra in _attach_tails(pending, states):
+                yield extra  # synthetic chunk(s), sent before the final (e.g. usage-only) chunk
             yield pending
         self._record("litellm.post_call", request_data, user_api_key_dict, counts)
+
+
+class _ChoiceStream:
+    """Streaming state of one response choice: text hold-back buffer and buffered tool-call arguments.
+
+    Text is released in pieces that never split a placeholder or a digit run, each masked with the already
+    released text as context (so ``rekening`` right before a cut still applies to the number right after it).
+    Tool-call arguments are JSON, so they are collected and emitted whole at the end of the stream.
+    """
+
+    CONTEXT = 160  # characters of released text kept as detector context
+
+    def __init__(self, guard: KawalLMGuardrail, sid: str | None, counts: Counter) -> None:
+        self.guard, self.sid, self.counts = guard, sid, counts
+        self.buffer = ""
+        self.context = ""
+        self.calls: dict[int, list] = {}  # tool call index -> [arguments so far, last fragment]
+        self.template: Any = None
+
+    def feed_text(self, text: str) -> str:
+        self.buffer += text
+        return self._release(final=False)
+
+    def hold_tool_calls(self, tool_calls: list) -> None:
+        for tc in tool_calls:
+            fn = getattr(tc, "function", None)
+            if fn is None or not isinstance(getattr(fn, "arguments", None), str):
+                continue
+            entry = self.calls.setdefault(getattr(tc, "index", 0) or 0, ["", tc])
+            entry[0] += fn.arguments
+            entry[1] = tc
+            fn.arguments = ""  # id/name stay on the fragment; the arguments come back whole at the end
+
+    def finish(self) -> tuple[str, list]:
+        tail = self._release(final=True)
+        extras = []
+        for raw, last in self.calls.values():
+            extra = copy.copy(last)
+            # Clients concatenate string fields across fragments, so only index + arguments may repeat.
+            for name in ("id", "type"):
+                if hasattr(extra, name):
+                    setattr(extra, name, None)
+            extra.function = copy.copy(last.function)
+            extra.function.name = None
+            extra.function.arguments = self.guard._process_tool_args(raw, self.sid, self.counts)
+            extras.append(extra)
+        self.calls.clear()
+        return tail, extras
+
+    def _release(self, final: bool) -> str:
+        buf = self.buffer
+        if final:
+            ready, self.buffer = buf, ""
+        else:
+            if len(buf) <= _HOLDBACK:
+                return ""
+            limit = len(buf) - _HOLDBACK
+            cut = -1
+            for i in range(limit, 0, -1):
+                if buf[i].isspace() and not buf[i - 1].isdigit() and buf[i - 1] not in "+-.":
+                    cut = i
+                    break
+            if cut <= 0 and len(buf) > _HOLDBACK * 4:
+                # Long whitespace-free stream (URL, base64, minified JSON): cut at the limit unless that
+                # would split a placeholder candidate or a digit run.
+                cut = limit
+                for m in _LOOSE_RE.finditer(buf):
+                    if m.start() < cut < m.end():
+                        cut = m.start()
+                        break
+                while cut > 0 and (buf[cut - 1].isdigit() or buf[cut - 1] in "+-."):
+                    cut -= 1
+            if cut <= 0:
+                return ""
+            ready, self.buffer = buf[:cut], buf[cut:]
+        if not ready:
+            return ""
+        out = self.guard._process_output(ready, self.sid, self.counts, self.context)
+        self.context = (self.context + ready)[-self.CONTEXT :]
+        return out
+
+
+def _attach_tails(pending: Any, states: dict[int, _ChoiceStream]) -> list:
+    """Put what the streams still hold onto ``pending`` (or onto new chunks when it has no matching choice).
+
+    The last chunk of a stream may be a usage-only chunk with ``choices == []``; the held-back text then goes
+    into a synthetic chunk placed before it instead of being dropped.
+    """
+    synthetic = []
+    for index, st in states.items():
+        tail, extras = st.finish()
+        if not tail and not extras:
+            continue
+        choice = next(
+            (c for c in getattr(pending, "choices", None) or [] if (getattr(c, "index", 0) or 0) == index), None
+        )
+        if choice is not None and getattr(choice, "delta", None) is not None:
+            delta = choice.delta
+            if tail:
+                delta.content = (getattr(delta, "content", None) or "") + tail
+            if extras:
+                delta.tool_calls = [*(getattr(delta, "tool_calls", None) or []), *extras]
+        elif st.template is not None:
+            chunk = copy.copy(pending)
+            new_choice = copy.copy(st.template)
+            new_choice.delta = copy.copy(st.template.delta)
+            new_choice.delta.content = tail or None
+            new_choice.delta.tool_calls = extras or None
+            new_choice.finish_reason = None
+            chunk.choices = [new_choice]
+            synthetic.append(chunk)
+    return synthetic

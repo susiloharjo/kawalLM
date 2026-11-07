@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 
 from .bank import find_bank_account
 from .base import PIIMatch, resolve_overlaps
@@ -41,14 +42,21 @@ DETECTORS = {
 ALL_ENTITIES = tuple(DETECTORS)
 
 
+# Invisible characters that can split a number ("0812\u200b34567890") without changing how it looks.
+_INVISIBLE = re.compile(r"[\u00ad\u200b-\u200f\u2060\ufeff]")
+
+
 def detect_pii(text: str, entities: tuple[str, ...] | None = None, check_region: bool = True) -> list[PIIMatch]:
     """Run selected detectors and return non-overlapping matches sorted by position.
 
     ``check_region=False`` skips the Kemendagri region lookup for NIK (date and
-    serial checks still apply).
+    serial checks still apply). Invisible characters are ignored for detection, and
+    match positions always refer to the original text.
     """
     if not text or not any(ch.isdigit() or ch == "@" or ch.isupper() for ch in text):
         return []
+    if _INVISIBLE.search(text):
+        return _detect_without_invisible(text, entities, check_region)
     found: list[PIIMatch] = []
     for name in entities or ALL_ENTITIES:
         if name == "ID_NIK":
@@ -56,6 +64,16 @@ def detect_pii(text: str, entities: tuple[str, ...] | None = None, check_region:
         else:
             found.extend(DETECTORS[name](text))
     return resolve_overlaps(found)
+
+
+def _detect_without_invisible(text: str, entities, check_region: bool) -> list[PIIMatch]:
+    kept_index = [i for i, ch in enumerate(text) if not _INVISIBLE.match(ch)]
+    cleaned = "".join(text[i] for i in kept_index)
+    out = []
+    for m in detect_pii(cleaned, entities, check_region):
+        start, end = kept_index[m.start], kept_index[m.end - 1] + 1
+        out.append(replace(m, start=start, end=end, text=text[start:end]))
+    return out
 
 
 __all__ = [

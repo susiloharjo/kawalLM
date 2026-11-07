@@ -129,7 +129,7 @@
     },
     {
       "term": "link alternatif",
-      "weight": 1.0
+      "weight": 0.5
     },
     {
       "term": "akun pro",
@@ -281,7 +281,7 @@
     },
     {
       "term": "langsung cair",
-      "weight": 1.0
+      "weight": 0.5
     },
     {
       "term": "cair dalam 5 menit",

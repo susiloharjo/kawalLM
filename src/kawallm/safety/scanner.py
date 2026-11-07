@@ -33,6 +33,11 @@ from .normalize import normalize
 
 CATEGORIES = ("TOXIC_SLANG", "JUDOL_PINJOL", "SARA_HATE_SPEECH", "JAILBREAK")
 
+# Words that mark text as discussing/reporting a topic rather than promoting it (normalised, single tokens).
+EDUCATIONAL_WORDS = frozenset(
+    "jelaskan bahaya dampak edukasi mencegah cegah hindari waspada laporkan melaporkan mengapa kenapa penelitian".split()
+)
+
 CATEGORY_LABELS = {
     "TOXIC_SLANG": "kata kasar / umpatan",
     "JUDOL_PINJOL": "promosi judi online / pinjol ilegal",
@@ -116,14 +121,18 @@ class SafetyScanner:
                 norm = normalize(t["term"]).strip()
                 if not norm:
                     continue
-                key = f" {norm}" if t.get("prefix") else f" {norm} "
                 payload = (cat, t["term"], float(t.get("weight", default_w)), source)
-                existing = self._automaton.get(key, None)
-                if existing is None:
-                    self._automaton.add_word(key, [payload])
-                    self.term_count += 1
-                else:
-                    existing.append(payload)
+                # Multi-word terms are also stored without spaces: "s l o t g a c o r" normalises to
+                # "slotgacor" because a fully spaced-out text has no visible word boundary.
+                forms = {norm, norm.replace(" ", "")}
+                for form in forms:
+                    key = f" {form}" if t.get("prefix") else f" {form} "
+                    existing = self._automaton.get(key, None)
+                    if existing is None:
+                        self._automaton.add_word(key, [payload])
+                        self.term_count += 1
+                    else:
+                        existing.append(payload)
         if self.term_count:
             self._automaton.make_automaton()
 
@@ -133,9 +142,12 @@ class SafetyScanner:
         norm = normalize(text)
         hits: list[Hit] = []
         if self.term_count:
+            # Educational / reporting context: ambiguous words (weight < 1) count half, so "jelaskan bahaya
+            # judi online dan pinjol" passes while strong promotional phrases (weight >= 1) still block.
+            educational = any(f" {w} " in norm for w in EDUCATIONAL_WORDS)
             for _, payloads in self._automaton.iter(norm):
                 for cat, term, w, src in payloads:
-                    hits.append(Hit(cat, term, w, src))
+                    hits.append(Hit(cat, term, w * 0.5 if educational and w < 1.0 else w, src))
         for rule in self.rules:
             if rule.pattern.search(norm):
                 hits.append(Hit(rule.category, rule.description or rule.id, rule.weight, rule.id))

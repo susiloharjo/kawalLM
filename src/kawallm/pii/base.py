@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import bisect
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -71,8 +72,16 @@ def has_keyword_near(text: str, start: int, end: int, keywords: frozenset[str], 
 def resolve_overlaps(matches: list[PIIMatch]) -> list[PIIMatch]:
     """Keep non-overlapping matches, preferring higher priority then longer spans."""
     ordered = sorted(matches, key=lambda m: (-m.priority, -(m.end - m.start), m.start))
+    # ``kept`` stays sorted by start and is non-overlapping, so only its two neighbours of a candidate can
+    # conflict with it: O(n log n) instead of comparing every candidate with every kept span.
+    starts: list[int] = []
     kept: list[PIIMatch] = []
     for m in ordered:
-        if all(m.end <= k.start or m.start >= k.end for k in kept):
-            kept.append(m)
-    return sorted(kept, key=lambda m: m.start)
+        i = bisect.bisect_left(starts, m.start)
+        if i > 0 and kept[i - 1].end > m.start:
+            continue
+        if i < len(kept) and kept[i].start < m.end:
+            continue
+        starts.insert(i, m.start)
+        kept.insert(i, m)
+    return kept

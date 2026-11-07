@@ -6,7 +6,7 @@ import threading
 import time
 import uuid
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Protocol, runtime_checkable
 
 from .audit import AuditLog, AuditSink, as_audit_log
@@ -62,7 +62,9 @@ class Vault:
     def token_for(self, session_id: str, entity: str, original: str) -> str:
         now = time.monotonic()
         with self._lock:
-            _, fwd, rev = self._data.pop(session_id, (0.0, {}, {}))
+            exp, fwd, rev = self._data.pop(session_id, (0.0, {}, {}))
+            if exp < now:  # unknown or expired: start clean, never revive old mappings by extending the TTL
+                fwd, rev = {}, {}
             token = assign_token(fwd, rev, entity, original)
             self._data[session_id] = (now + self.ttl, fwd, rev)
             self._purge(now)
@@ -145,14 +147,23 @@ class KawalLMEngine:
             return "".join(reversed(out))
         return f"<{m.entity}>"
 
-    def mask(self, text: str, session_id: str | None = None, mode: str | None = None) -> MaskResult:
-        """Mask PII. ``mode`` overrides the engine mode for this call only."""
+    def mask(self, text: str, session_id: str | None = None, mode: str | None = None, context: str = "") -> MaskResult:
+        """Mask PII. ``mode`` overrides the engine mode for this call only.
+
+        ``context`` is text that precedes ``text`` and was already handled (for example the previous chunk of a
+        stream, or a JSON field name). Detectors see it, so a keyword such as ``rekening`` still applies to a
+        number in ``text``; it is neither returned nor masked, and values that straddle the boundary are left
+        to the caller that owns the earlier text.
+        """
         mode = mode or self.mode
         if not self.mask_pii_enabled or not text:
             return MaskResult(text, [], session_id)
         if mode == "reversible" and session_id is None:
             session_id = uuid.uuid4().hex
-        matches = self.detect(text)
+        offset = len(context)
+        matches = self.detect(context + text) if context else self.detect(text)
+        if offset:
+            matches = [replace(m, start=m.start - offset, end=m.end - offset) for m in matches if m.start >= offset]
         if not matches:
             return MaskResult(text, [], session_id)
         parts, last = [], 0

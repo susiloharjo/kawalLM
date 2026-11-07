@@ -46,6 +46,15 @@ JAILBREAK_RULES: tuple[Rule, ...] = (
         "Abaikan/lupakan instruksi sebelumnya",
     ),
     Rule(
+        "JB-EN-001",
+        "JAILBREAK",
+        _r(
+            r"\b(?:ignore|disregard|forget|override)\b(?: \w+){0,2} (?:previous|prior|above|earlier|system) (?:\w+ ){0,2}(?:instructions?|prompts?|rules|directions)\b"
+        ),
+        1.0,
+        "Ignore previous instructions (English word order)",
+    ),
+    Rule(
         "JB-ID-002",
         "JAILBREAK",
         _r(rf"\b{_IGNORE} (?:semua |seluruh |segala )?{_INSTR}\b"),

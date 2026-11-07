@@ -14,8 +14,10 @@ _LEET = str.maketrans({"4": "a", "@": "a", "0": "o", "1": "i", "!": "i", "3": "e
 # ("!" only counts when it sits between other token characters).
 _TOKEN_RE = re.compile(r"(?<![a-z0-9@$])(?=[a-z]*[0-9@$!])[a-z0-9@$]+(?:!+[a-z0-9@$]+)*")
 # "s.l.o.t", "s l o t", "g-a-c-o-r": 3+ single chars joined by separators
-_SPACED_RE = re.compile(r"(?<![a-z0-9])(?:[a-z0-9@$][.\-_*\s]){2,}[a-z0-9@$](?![a-z0-9])")
-_SPACED_HINT = re.compile(r"(?<![a-z0-9])[a-z0-9@$][.\-_*\s][a-z0-9@$][.\-_*\s][a-z0-9@$](?![a-z0-9])")
+# One spaced-out word uses ONE separator ("s.l.o.t", "s l o t"). Requiring the same separator throughout keeps a
+# different one between words: "s.l.o.t g.4.c.0.r" -> "slot gacor", not "slotgacor".
+_SPACED_RE = re.compile(r"(?<![a-z0-9])[a-z0-9@$]([.\-_*\s])(?:[a-z0-9@$]\1)+[a-z0-9@$](?![a-z0-9])")
+_SPACED_HINT = re.compile(r"(?<![a-z0-9])[a-z0-9@$]([.\-_*\s])[a-z0-9@$]\1[a-z0-9@$](?![a-z0-9])")
 _REPEAT_RE = re.compile(r"([a-z])\1{2,}")
 _WS_RE = re.compile(r"[^a-z0-9]+")
 _ZW_RE = re.compile(r"[\u00ad\u200b-\u200f\u2060\ufeff]+")
