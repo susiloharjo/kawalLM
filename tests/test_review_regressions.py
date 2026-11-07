@@ -10,7 +10,6 @@ import pytest
 from helpers import token
 
 from kawallm import KawalLM, KawalLMEngine
-from kawallm.integrations.litellm import KawalLMGuardrail
 from kawallm.pii import detect_pii
 
 NIK = "3171011501900001"
@@ -18,6 +17,10 @@ NIK2 = "3171015501920002"
 
 
 def G(**kw):
+    # Imported lazily: the core CI job runs without the litellm extra, so these tests skip there.
+    pytest.importorskip("litellm")
+    from kawallm.integrations.litellm import KawalLMGuardrail
+
     return KawalLMGuardrail(guardrail_name="k", event_hook=["pre_call", "post_call"], **kw)
 
 
