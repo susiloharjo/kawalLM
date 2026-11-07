@@ -63,22 +63,16 @@ cd docker
 OPENAI_API_KEY=sk-... LITELLM_MASTER_KEY=sk-local docker compose up -d --build
 ```
 
-**Opsi B — image resmi LiteLLM + install saat startup** (butuh internet setiap container start):
+**Opsi B — LiteLLM yang sudah berjalan (pip):**
 
-```yaml
-services:
-  litellm-gateway:
-    image: ghcr.io/berriai/litellm:main-stable
-    container_name: litellm_kawallm
-    ports:
-      - "4000:4000"
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
-    volumes:
-      - ./litellm_config.yaml:/app/config.yaml:ro
-    entrypoint: ["sh", "-c", "pip install --no-cache-dir kawallm && litellm --config /app/config.yaml --port 4000"]
+Pasang di environment Python yang sama dengan LiteLLM, tambahkan blok `guardrails:` di atas ke `config.yaml`, lalu restart proxy:
+
+```bash
+pip install "kawallm[litellm]"
+litellm --config litellm_config.yaml --port 4000
 ```
+
+> Image `ghcr.io/berriai/litellm` terbaru tidak menyertakan `pip` (dependensinya ada di `/app/.venv` dan dipasang dengan `uv`), jadi `pip install` saat startup container tidak lagi bisa dipakai. Untuk Docker, pakai Opsi A atau `docker/Dockerfile` sebagai contoh membangun image sendiri.
 
 ### 3. Yang terjadi saat request masuk
 
@@ -131,6 +125,22 @@ Respon HTTP 400, request tidak diteruskan ke LLM (hemat token):
 ```
 
 > Field `type` ditentukan oleh LiteLLM, bukan oleh KawalLM. Untuk deteksi programatik, cek `provider_specific_fields.guardrail == "kawallm"`.
+
+**C. Reversible: LLM tidak melihat data asli, user tetap melihatnya**
+
+Dengan `masking_mode: reversible` dan `restore_output: true`:
+
+```
+User   : "Kirim SMS ke 081288889999"
+LLM    : menerima "Kirim SMS ke <ID_PHONE_1>"  → menjawab "Terkirim ke <ID_PHONE_1>"
+User   : menerima "Terkirim ke 081288889999"
+```
+
+Berlaku juga untuk streaming dan untuk argumen `tool_calls` di response. Hal yang perlu diperhatikan:
+
+- Mapping disimpan **di memori satu proses**, per `litellm_call_id`. Kalau LiteLLM berjalan dengan beberapa replica dan response bisa mendarat di replica lain, pakai sticky session atau mode `token`.
+- Hanya token persis `<ID_PHONE_1>` yang dipulihkan. Kalau model menuliskannya dengan bentuk lain (`ID_PHONE_1`, huruf kecil), token itu dibiarkan apa adanya.
+- Sesi antar-request terisolasi: token dari satu request tidak pernah memulihkan nilai milik request lain.
 
 ---
 
