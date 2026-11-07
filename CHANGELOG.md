@@ -10,6 +10,7 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikut
 - Hold-back streaming LiteLLM 48 -> 64 karakter.
 
 ### Added
+- `IP_ADDRESS`: alamat IPv4 dan IPv6 dimaskir, divalidasi dengan `ipaddress` (octet > 255, nol di depan, nomor build, `v1.2.3.4`, MAC, jam, dan `Foo::Bar` tidak ikut). Aktif secara default, termasuk IP internal; matikan lewat `entities`. Placeholder reversible: `<IP_ADDRESS_1_a3f2c9>`.
 - Telepon rumah (`ID_PHONE`, `meta["landline"]`): `(021) 5551234`, `021-5551234`, `+62 21 5551234`; angka tanpa pemisah hanya dengan kata kunci (`telp`, `fax`, ...). Kode area divalidasi terhadap daftar kota besar/ibu kota kabupaten (`AREA_CODES`), tanggal, versi, dan IP tidak ikut terdeteksi.
 - `StreamDeanonymizer` (+ `KawalLM.deanonymize_stream`, `KawalLMEngine.unmask_stream`): pemulihan placeholder untuk respons streaming di luar LiteLLM.
 

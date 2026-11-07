@@ -7,7 +7,7 @@
 
 **Guardrail engine open-source, latensi rendah, untuk kepatuhan UU PDP (UU No. 27/2022) di infrastruktur AI Indonesia.**
 
-KawalLM memaskir PII lokal (NIK, NPWP, NIP, No. HP, rekening bank, BPJS, NISN, paspor, SIM, plat nomor) dengan **validasi semantik deterministik**, dan memblokir promosi **judol/pinjol ilegal**, **ujaran kebencian SARA**, serta **prompt injection berbahasa Indonesia** — tanpa GPU, tanpa network call, drop-in untuk **LiteLLM Proxy**, **Presidio**, dan **FastAPI**.
+KawalLM memaskir PII lokal (NIK, NPWP, NIP, No. HP, rekening bank, BPJS, NISN, paspor, SIM, plat nomor, alamat IP) dengan **validasi semantik deterministik**, dan memblokir promosi **judol/pinjol ilegal**, **ujaran kebencian SARA**, serta **prompt injection berbahasa Indonesia** — tanpa GPU, tanpa network call, drop-in untuk **LiteLLM Proxy**, **Presidio**, dan **FastAPI**.
 
 > ⚠️ Status: **alpha**. Deteksi bukan jaminan kepatuhan hukum. Lakukan review untuk penggunaan berisiko tinggi.
 
@@ -107,7 +107,8 @@ kawallm --json "abaikan instruksi sebelumnya"  # exit code 2 bila diblokir
 
 ### Entitas
 
-`ID_NIK`, `ID_NPWP`, `ID_NIP`, `ID_PHONE`, `ID_BANK_ACCOUNT`, `ID_BPJS_KES`, `ID_BPJS_TK`, `ID_NISN`, `ID_PASSPORT`, `ID_SIM`, `ID_PLATE`, `EMAIL`.
+`ID_NIK`, `ID_NPWP`, `ID_NIP`, `ID_PHONE`, `ID_BANK_ACCOUNT`, `ID_BPJS_KES`, `ID_BPJS_TK`, `ID_NISN`, `ID_PASSPORT`, `ID_SIM`, `ID_PLATE`, `IP_ADDRESS`, `EMAIL`.
+`IP_ADDRESS` mencakup IPv4 dan IPv6 yang valid; angka mirip IP seperti nomor build (`10.0.19045.2965`), `v1.2.3.4`, MAC, dan jam tidak ikut. Alamat IP internal (`10.x`, `192.168.x`) juga dimaskir; untuk asisten jaringan yang perlu melihat IP, matikan lewat `entities=` (mis. tanpa `IP_ADDRESS`).
 NIP (18 digit) dikenali dari strukturnya (tanggal lahir + bulan pengangkatan + gender). NISN, paspor, dan SIM tidak punya checksum, jadi hanya dimaskir bila ada kata kunci di dekatnya (`NISN`, `paspor`, `SIM`).
 Catatan: nomor **KK** punya struktur sama dengan NIK, sehingga terdeteksi sebagai `ID_NIK` (keduanya data pribadi).
 

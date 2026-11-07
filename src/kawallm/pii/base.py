@@ -19,6 +19,7 @@ PRIORITY = {
     "ID_SIM": 65,
     "ID_PHONE": 60,
     "EMAIL": 55,
+    "IP_ADDRESS": 45,
     "ID_PLATE": 40,
 }
 

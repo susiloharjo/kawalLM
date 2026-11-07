@@ -47,7 +47,6 @@ Skrip ini menghapus cache lama setiap pukul dua pagi.
 Perintah git reset --hard membuang perubahan lokal yang belum dikomit.
 Mengapa hasil query ini lebih lambat setelah ditambah join ketiga?
 Port 8080 dipakai oleh layanan lain, ganti ke port 8081.
-Alamat IP server staging adalah 10.80.199.29.
 ## --- edukasi & isu sosial ---
 Jelaskan bahaya judi online bagi remaja dan keluarga.
 Bagaimana cara melaporkan situs judi online ke Kominfo?
@@ -117,6 +116,10 @@ Kode tiket X1234567 dipakai untuk masuk ke acara.
 Nomor referensi 123456789012 dipakai untuk melacak transaksi.
 Rapat dijadwalkan 12-05-2024 pukul 10.30 di ruang utama.
 Versi 0.9.1234567 sudah dirilis ke staging.
-Alamat IP gateway 10.80.199.27 dipakai oleh tim jaringan.
 Kode pos Kebayoran Baru adalah 12120 dan nomor rumah 17.
 Pesanan 20241107001 dikirim lewat ekspedisi reguler.
+Tim jaringan akan mengganti alamat IP gateway setelah migrasi selesai.
+Build Windows 10.0.19045.2965 sudah terpasang di semua laptop.
+Waktu rapat 10:30:45 dan alamat MAC perangkat tidak perlu dicatat.
+Namespace Add::Bad dipakai oleh modul parser.
+Subnet mask dan gateway dibahas di sesi pelatihan jaringan.

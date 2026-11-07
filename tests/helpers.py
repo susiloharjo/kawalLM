@@ -6,8 +6,8 @@ tokens from the masked text instead of hard-coding them.
 
 import re
 
-TOKEN = re.compile(r"<(?:ID_[A-Z_]+|EMAIL)_\d+_[0-9a-f]{6}>")
-_NONCE = re.compile(r"(<(?:ID_[A-Z_]+|EMAIL)_\d+)_[0-9a-f]{6}>")
+TOKEN = re.compile(r"<(?:ID_[A-Z_]+|EMAIL|IP_ADDRESS)_\d+_[0-9a-f]{6}>")
+_NONCE = re.compile(r"(<(?:ID_[A-Z_]+|EMAIL|IP_ADDRESS)_\d+)_[0-9a-f]{6}>")
 
 
 def shape(text: str) -> str:

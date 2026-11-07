@@ -30,6 +30,7 @@ SUPPORTED_ENTITIES = [
     "ID_NISN",
     "ID_PASSPORT",
     "ID_SIM",
+    "IP_ADDRESS",
 ]
 
 _DETECTOR_FOR = {

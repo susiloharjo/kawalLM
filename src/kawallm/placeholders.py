@@ -12,13 +12,13 @@ import re
 import secrets
 
 _NONCE_LEN = 6
-_KEY_RE = re.compile(rf"^<((?:ID_[A-Z_]+?)|EMAIL)_(\d+)_([0-9a-f]{{{_NONCE_LEN}}})>$")
+_KEY_RE = re.compile(rf"^<((?:ID_[A-Z_]+?)|EMAIL|IP_ADDRESS)_(\d+)_([0-9a-f]{{{_NONCE_LEN}}})>$")
 # How an LLM may hand a placeholder back: any of <>, &lt;&gt;, [], () around it (or none), any case,
 # spaces/underscores/colons/dashes as separators. Matching is only a *candidate*: restore checks the map.
 _OPEN = r"(?:(?:<|&lt;|&#60;|\[|\()\s*|(?<![A-Za-z0-9]))"  # an opening bracket, or the start of a bare word
 _CLOSE = r"(?:\s*(?:>|&gt;|&#62;|\]|\)))?"
 _LOOSE_RE = re.compile(
-    rf"{_OPEN}(ID(?:[\s_]+[A-Za-z]+)+?|EMAIL)[\s_]+(\d+)[\s_:\-]+([0-9a-f]{{{_NONCE_LEN}}})(?![0-9A-Za-z]){_CLOSE}",
+    rf"{_OPEN}(ID(?:[\s_]+[A-Za-z]+)+?|EMAIL|IP[\s_]+ADDRESS)[\s_]+(\d+)[\s_:\-]+([0-9a-f]{{{_NONCE_LEN}}})(?![0-9A-Za-z]){_CLOSE}",
     re.IGNORECASE,
 )
 
