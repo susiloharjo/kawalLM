@@ -12,7 +12,7 @@ import re
 from .base import PIIMatch, digits_only
 from .landline import find_landline
 
-PHONE_RE = re.compile(r"(?<![\d+])(?:\+62|62|0)[\s.\-]?8\d{1,2}(?:[\s.\-]?\d){6,10}(?![\d])")
+PHONE_RE = re.compile(r"(?:\+(?<![\d+].)62|6(?<![\d+].)2|0(?<![\d+].))[\s.\-]?8\d{1,2}(?:[\s.\-]?\d){6,10}(?!\d)")
 
 OPERATOR_PREFIXES: dict[str, str] = {}
 for _op, _prefixes in {

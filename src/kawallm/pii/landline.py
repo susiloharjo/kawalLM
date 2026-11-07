@@ -32,7 +32,7 @@ AREA_CODES = frozenset(
 )
 # fmt: on
 
-PAREN_RE = re.compile(r"(?<![\d+(])\(0[2-79]\d{1,3}\)[\s.\-]?\d{6,8}(?!\d)")
+PAREN_RE = re.compile(r"\((?<![\d+(].)0[2-79]\d{1,3}\)[\s.\-]?\d{6,8}(?!\d)")
 # No leading lookbehind: it defeats the regex engine's first-character scan, so the boundary is checked in find_landline.
 LANDLINE_RE = re.compile(r"(?:\+62|62|0)[\s.\-]?[2-79]\d(?:[\s.\-]?\d){6,10}(?!\d)")
 

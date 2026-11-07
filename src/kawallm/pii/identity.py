@@ -15,10 +15,10 @@ from datetime import date
 from .base import PIIMatch, digits_only, has_keyword_near, mentions_any
 
 _SEP = r"[\s.\-]?"
-NIP_RE = re.compile(rf"(?<![\d])(\d{{8}}){_SEP}(\d{{6}}){_SEP}([12]){_SEP}(\d{{3}})(?![\d])")
-NISN_RE = re.compile(r"(?<![\d])\d{10}(?![\d])")
-PASSPORT_RE = re.compile(r"(?<![A-Za-z0-9])[A-Z]\s?\d{7}(?![A-Za-z0-9])")
-SIM_RE = re.compile(rf"(?<![\d])\d{{4}}{_SEP}\d{{4}}{_SEP}\d{{4}}(?![\d])")
+NIP_RE = re.compile(rf"(\d(?<!\d.)\d{{7}}){_SEP}(\d{{6}}){_SEP}([12]){_SEP}(\d{{3}})(?!\d)")
+NISN_RE = re.compile(r"\d(?<!\d.)\d{9}(?!\d)")
+PASSPORT_RE = re.compile(r"[A-Z](?<![A-Za-z0-9].)\s?\d{7}(?![A-Za-z0-9])")
+SIM_RE = re.compile(rf"\d(?<!\d.)\d{{3}}{_SEP}\d{{4}}{_SEP}\d{{4}}(?!\d)")
 
 NISN_KEYWORDS = frozenset({"nisn", "dapodik"})
 PASSPORT_KEYWORDS = frozenset({"paspor", "passport", "pasport"})

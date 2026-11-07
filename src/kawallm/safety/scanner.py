@@ -110,6 +110,7 @@ class SafetyScanner:
             dicts.append((p.name, json.loads(p.read_text(encoding="utf-8"))))
         self._automaton = ahocorasick.Automaton()
         self.term_count = 0
+        self._has_automaton = False
         for source, d in dicts:
             cat = d["category"]
             if cat not in self.enabled:
@@ -129,11 +130,29 @@ class SafetyScanner:
                     key = f" {form}" if t.get("prefix") else f" {form} "
                     existing = self._automaton.get(key, None)
                     if existing is None:
-                        self._automaton.add_word(key, [payload])
+                        self._automaton.add_word(key, ([payload], []))
                         self.term_count += 1
+                        self._has_automaton = True
                     else:
-                        existing.append(payload)
-        if self.term_count:
+                        existing[0].append(payload)
+
+        # Index rule trigger words in the same Aho-Corasick automaton so regex rules
+        # only run when at least one of their anchor words is present in the text.
+        self._always_rules: list[Rule] = []
+        for idx, rule in enumerate(self.rules):
+            if not rule.triggers:
+                self._always_rules.append(rule)
+                continue
+            for trig in rule.triggers:
+                key = f" {trig} "
+                existing = self._automaton.get(key, None)
+                if existing is None:
+                    self._automaton.add_word(key, ([], [idx]))
+                    self._has_automaton = True
+                elif idx not in existing[1]:
+                    existing[1].append(idx)
+
+        if self._has_automaton:
             self._automaton.make_automaton()
 
     def scan(self, text: str) -> SafetyResult:
@@ -141,14 +160,27 @@ class SafetyScanner:
             return SafetyResult(safe=True)
         norm = normalize(text)
         hits: list[Hit] = []
-        if self.term_count:
-            # Educational / reporting context: ambiguous words (weight < 1) count half, so "jelaskan bahaya
-            # judi online dan pinjol" passes while strong promotional phrases (weight >= 1) still block.
-            educational = any(f" {w} " in norm for w in EDUCATIONAL_WORDS)
-            for _, payloads in self._automaton.iter(norm):
-                for cat, term, w, src in payloads:
+        triggered: set[int] = set()
+        if self._has_automaton:
+            raw_hits: list[tuple[str, str, float, str]] = []
+            for _, (payloads, rule_idxs) in self._automaton.iter(norm):
+                if payloads:
+                    raw_hits.extend(payloads)
+                if rule_idxs:
+                    triggered.update(rule_idxs)
+            if raw_hits:
+                # Educational / reporting context: ambiguous words (weight < 1) count half, so "jelaskan bahaya
+                # judi online dan pinjol" passes while strong promotional phrases (weight >= 1) still block.
+                educational = any(w < 1.0 for _, _, w, _ in raw_hits) and any(
+                    f" {w} " in norm for w in EDUCATIONAL_WORDS
+                )
+                for cat, term, w, src in raw_hits:
                     hits.append(Hit(cat, term, w * 0.5 if educational and w < 1.0 else w, src))
-        for rule in self.rules:
+        for idx in sorted(triggered):
+            rule = self.rules[idx]
+            if rule.pattern.search(norm):
+                hits.append(Hit(rule.category, rule.description or rule.id, rule.weight, rule.id))
+        for rule in self._always_rules:
             if rule.pattern.search(norm):
                 hits.append(Hit(rule.category, rule.description or rule.id, rule.weight, rule.id))
 

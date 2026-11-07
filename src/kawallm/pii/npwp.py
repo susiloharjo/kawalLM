@@ -18,8 +18,8 @@ import re
 
 from .base import PIIMatch, digits_only, has_keyword_near, mentions_any
 
-NPWP_FORMATTED_RE = re.compile(r"(?<![\d])0?\d{2}\.\d{3}\.\d{3}\.\d-\d{3}\.\d{3}(?![\d])")
-NPWP_PLAIN_RE = re.compile(r"(?<![\d.\-])(?:0\d{15}|\d{15})(?![\d])")
+NPWP_FORMATTED_RE = re.compile(r"\d(?<!\d.)\d{1,2}\.\d{3}\.\d{3}\.\d-\d{3}\.\d{3}(?!\d)")
+NPWP_PLAIN_RE = re.compile(r"\d(?<![\d.\-].)(?:\d{14}|(?<=0)\d{15})(?!\d)")
 
 NPWP_KEYWORDS = frozenset({"npwp", "pajak", "wajib", "djp", "nitku", "taxpayer", "tin"})
 

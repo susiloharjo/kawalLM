@@ -22,7 +22,7 @@ REGION_CODES = frozenset(
     """.split()
 )
 
-PLATE_RE = re.compile(r"(?<![A-Za-z0-9])([A-Z]{1,2})\s?(\d{1,4})\s?([A-Z]{1,3})(?![A-Za-z0-9])")
+PLATE_RE = re.compile(r"([A-Z](?<![A-Za-z0-9].)[A-Z]?)\s?(\d{1,4})\s?([A-Z]{1,3})(?![A-Za-z0-9])")
 
 
 def find_plate(text: str) -> list[PIIMatch]:

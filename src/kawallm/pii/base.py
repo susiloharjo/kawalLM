@@ -58,14 +58,14 @@ def has_keyword_near(text: str, start: int, end: int, keywords: frozenset[str], 
 
     Keywords are matched case-insensitively against whole alphabetic words.
     """
-    before = _WORD_RE.findall(text[max(0, start - 120) : start])[-window_words:]
-    after = _WORD_RE.findall(text[end : end + 120])[:window_words]
+    before = _WORD_RE.findall(text[max(0, start - 100) : start].lower())[-window_words:]
+    after = _WORD_RE.findall(text[end : end + 100].lower())[:window_words]
     for w in reversed(before):
-        if w.lower() in keywords:
-            return w.lower()
+        if w in keywords:
+            return w
     for w in after:
-        if w.lower() in keywords:
-            return w.lower()
+        if w in keywords:
+            return w
     return None
 
 

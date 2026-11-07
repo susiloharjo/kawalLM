@@ -22,20 +22,43 @@ class Rule:
     pattern: re.Pattern
     weight: float = 1.0
     description: str = ""
+    triggers: tuple[str, ...] = ()
 
 
 def _r(p: str) -> re.Pattern:
     return re.compile(p)
 
 
-_IGNORE = r"(?:abaikan|lupakan|hiraukan|acuhkan|cuekin|tinggalkan|buang|ignore|disregard|forget)"
-_INSTR = r"(?:instruksi|perintah|aturan|arahan|prompt|pesan|instructions?|rules?|prompts?|directions?)"
+def _alts(group: str) -> tuple[str, ...]:
+    """Expand a simple ``(?:a|b|c)`` regex alternation (including ``s?`` plurals) into trigger strings."""
+    out: list[str] = []
+    for item in group.removeprefix("(?:").removesuffix(")").split("|"):
+        if item.endswith("?"):
+            out.append(item[:-2])
+            out.append(item[:-1])
+        else:
+            out.append(item)
+    return tuple(out)
+
+
+_IGNORE = r"(?:abaikan|lupakan|hiraukan|acuhkan|cuekin|tinggalkan|buang|kesampingkan|hapus|lewatkan|skip|bypass|drop|ignore|disregard|forget)"
+_INSTR = (
+    r"(?:instruksi|perintah|aturan|arahan|prompt|pesan|larangan|batasan|kebijakan|panduan|pedoman|"
+    r"instructions?|rules?|prompts?|directions?|guidelines?|policies|policy|constraints?)"
+)
 _PREV = r"(?:sebelumnya|sebelum ini|di atas|diatas|sistem|system|awal|previous|prior|above|earlier)"
-_REVEAL = r"(?:bocorkan|tampilkan|tunjukkan|tunjukin|ulangi|tuliskan|sebutkan|cetak|kasih tahu|kasih tau|print|reveal|show|repeat|output|leak)"
+_REVEAL = (
+    r"(?:bocorkan|tampilkan|tunjukkan|tunjukin|ulangi|tuliskan|sebutkan|cetak|kasih tahu|kasih tau|"
+    r"beritahu|beri tahu|salin|terjemahkan|ekstrak|bacakan|spill|spil|"
+    r"print|reveal|show|repeat|output|leak|copy|translate|extract|dump)"
+)
 _SYSPROMPT = (
     r"(?:system prompt|sistem prompt|prompt sistem|instruksi sistem|pesan sistem|"
     r"instruksi awal|prompt awal|initial prompt|hidden prompt|prompt rahasia|instruksi rahasia)"
 )
+
+_IGNORE_TRIGGERS = _alts(_IGNORE)
+_SYSPROMPT_TRIGGERS = _alts(_SYSPROMPT)
 
 JAILBREAK_RULES: tuple[Rule, ...] = (
     Rule(
@@ -44,6 +67,7 @@ JAILBREAK_RULES: tuple[Rule, ...] = (
         _r(rf"\b{_IGNORE}\b(?: \w+){{0,3}} {_INSTR}\b(?: \w+){{0,3}} {_PREV}\b"),
         1.0,
         "Abaikan/lupakan instruksi sebelumnya",
+        _IGNORE_TRIGGERS,
     ),
     Rule(
         "JB-EN-001",
@@ -53,6 +77,7 @@ JAILBREAK_RULES: tuple[Rule, ...] = (
         ),
         1.0,
         "Ignore previous instructions (English word order)",
+        ("ignore", "disregard", "forget", "override"),
     ),
     Rule(
         "JB-ID-002",
@@ -60,13 +85,15 @@ JAILBREAK_RULES: tuple[Rule, ...] = (
         _r(rf"\b{_IGNORE} (?:semua |seluruh |segala )?{_INSTR}\b"),
         0.6,
         "Abaikan semua instruksi (tanpa penanda 'sebelumnya')",
+        _IGNORE_TRIGGERS,
     ),
     Rule(
         "JB-ID-003",
         "JAILBREAK",
-        _r(rf"\b{_REVEAL}\b(?: \w+){{0,4}} {_SYSPROMPT}\b"),
+        _r(rf"\b(?:{_REVEAL}\b(?: \w+){{0,4}} {_SYSPROMPT}|apa isi {_SYSPROMPT})\b"),
         1.0,
         "Bocorkan/tampilkan system prompt",
+        _SYSPROMPT_TRIGGERS,
     ),
     Rule(
         "JB-ID-004",
@@ -79,6 +106,23 @@ JAILBREAK_RULES: tuple[Rule, ...] = (
         ),
         1.0,
         "Mulai sekarang kamu adalah DAN / karakter jahat",
+        (
+            "dan",
+            "do anything now",
+            "jahat",
+            "tanpa batas",
+            "tanpa batasan",
+            "tanpa aturan",
+            "tanpa sensor",
+            "tanpa filter",
+            "evil",
+            "unrestricted",
+            "unfiltered",
+            "uncensored",
+            "jailbroken",
+            "developer mode",
+            "mode pengembang",
+        ),
     ),
     Rule(
         "JB-ID-005",
@@ -88,6 +132,7 @@ JAILBREAK_RULES: tuple[Rule, ...] = (
         ),
         0.6,
         "Aktivasi mode khusus",
+        ("mode",),
     ),
     Rule(
         "JB-ID-006",
@@ -97,6 +142,7 @@ JAILBREAK_RULES: tuple[Rule, ...] = (
         ),
         0.4,
         "Minta respons tanpa sensor/filter",
+        ("tanpa", "tidak ada", "tak ada", "no", "without"),
     ),
     Rule(
         "JB-ID-007",
@@ -107,6 +153,7 @@ JAILBREAK_RULES: tuple[Rule, ...] = (
         ),
         1.0,
         "Roleplay untuk melepas batasan",
+        ("pura pura", "berpura pura", "bayangkan", "anggap", "pretend", "imagine", "roleplay"),
     ),
     Rule(
         "JB-ID-008",
@@ -116,6 +163,7 @@ JAILBREAK_RULES: tuple[Rule, ...] = (
         ),
         0.6,
         "Menyangkal identitas asisten",
+        ("bukan lagi", "tidak lagi", "no longer", "are not"),
     ),
     Rule(
         "JB-ID-009",
@@ -125,6 +173,7 @@ JAILBREAK_RULES: tuple[Rule, ...] = (
         ),
         1.0,
         "Override instruksi sistem / guardrail",
+        ("override", "timpa", "ganti", "ubah", "reset"),
     ),
     Rule(
         "JB-ID-010",
@@ -132,5 +181,28 @@ JAILBREAK_RULES: tuple[Rule, ...] = (
         _r(r"\b(?:jailbreak|prompt injection|injeksi prompt)\b"),
         0.4,
         "Menyebut jailbreak secara eksplisit",
+        ("jailbreak", "prompt injection", "injeksi prompt"),
+    ),
+    Rule(
+        "JB-ID-011",
+        "JAILBREAK",
+        _r(
+            r"\b(?:(?:instruksi|perintah|aturan|arahan) (?:baru |tambahan )?(?:dari )?(?:sistem|system|admin|developer) "
+            r"(?:adalah|berikut|yaitu|mulai sekarang)|(?:system|admin|developer) override)\b"
+        ),
+        1.0,
+        "Injeksi instruksi sistem/admin palsu",
+        ("sistem", "system", "admin", "developer"),
+    ),
+    Rule(
+        "JB-ID-012",
+        "JAILBREAK",
+        _r(
+            r"\b(?:jangan pernah|kamu dilarang|anda dilarang|tidak boleh|do not|never) (?:\w+ ){0,2}"
+            r"(?:menolak|tolak|refuse|decline) (?:permintaan|pertanyaan|perintah|instruksi|requests?|prompts?|questions?)\b"
+        ),
+        1.0,
+        "Larangan menolak permintaan berbahaya",
+        ("menolak", "tolak", "refuse", "decline"),
     ),
 )

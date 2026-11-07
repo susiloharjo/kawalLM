@@ -22,10 +22,11 @@ from .base import PIIMatch
 from .wilayah import is_valid_kecamatan, lookup
 
 # 16 digits, optionally grouped as 4-4-4-4 / 6-6-4 with spaces, dots or dashes.
+# Lookbehind sits after [1-9] so the C regex engine can use its first-character charset scan.
 NIK_RE = re.compile(
-    r"(?<![\d])(?:[1-9]\d{15}"
-    r"|[1-9]\d{3}[ .-]\d{4}[ .-]\d{4}[ .-]\d{4}"
-    r"|[1-9]\d{5}[ .-]\d{6}[ .-]\d{4})(?![\d])"
+    r"[1-9](?<!\d.)(?:\d{15}"
+    r"|\d{3}[ .-]\d{4}[ .-]\d{4}[ .-]\d{4}"
+    r"|\d{5}[ .-]\d{6}[ .-]\d{4})(?!\d)"
 )
 
 

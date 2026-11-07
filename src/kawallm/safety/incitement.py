@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from .jailbreak import Rule
+from .jailbreak import Rule, _alts
 
 _VERB = (
     r"(?:bunuh|bantai|basmi|habisi|musnahkan|usir|ganyang|bakar|serang|perangi|"
@@ -21,6 +21,8 @@ _GROUP = (
     r"pendatang|imigran)"
 )
 
+_GROUP_TRIGGERS = _alts(_GROUP)
+
 INCITEMENT_RULES: tuple[Rule, ...] = (
     Rule(
         "SARA-ID-001",
@@ -30,6 +32,7 @@ INCITEMENT_RULES: tuple[Rule, ...] = (
         ),
         1.0,
         "Hasutan kekerasan terhadap kelompok SARA",
+        _GROUP_TRIGGERS,
     ),
     Rule(
         "SARA-ID-002",
@@ -37,6 +40,7 @@ INCITEMENT_RULES: tuple[Rule, ...] = (
         re.compile(rf"\b{_GROUP} (?:harus|wajib|layak|pantas|halal) (?:\w+ ){{0,2}}(?:di)?{_VERB}(?:kan)?\b"),
         1.0,
         "Kelompok SARA 'harus dibunuh/diusir'",
+        _GROUP_TRIGGERS,
     ),
     Rule(
         "SARA-ID-003",
@@ -46,6 +50,7 @@ INCITEMENT_RULES: tuple[Rule, ...] = (
         ),
         1.0,
         "Dehumanisasi kelompok SARA",
+        ("anjing", "babi", "monyet", "sampah", "binatang", "iblis", "setan", "penyakit", "parasit"),
     ),
     Rule(
         "SARA-ID-004",
@@ -56,5 +61,6 @@ INCITEMENT_RULES: tuple[Rule, ...] = (
         ),
         1.0,
         "Permintaan konten rasis/homofobik",
+        ("rasis", "rasialis", "homofobik", "homofobia", "transfobik", "sara", "racist", "homophobic"),
     ),
 )

@@ -11,8 +11,8 @@ import re
 
 from .base import PIIMatch, digits_only, has_keyword_near, mentions_any
 
-BPJS_KES_RE = re.compile(r"(?<![\d])\d{4}[\s.\-]?\d{4}[\s.\-]?\d{5}(?![\d])")
-BPJS_TK_RE = re.compile(r"(?<![\d])\d{11}(?![\d])")
+BPJS_KES_RE = re.compile(r"\d(?<!\d.)\d{3}[\s.\-]?\d{4}[\s.\-]?\d{5}(?!\d)")
+BPJS_TK_RE = re.compile(r"\d(?<!\d.)\d{10}(?!\d)")
 
 KES_KEYWORDS = frozenset({"bpjs", "kesehatan", "jkn", "kis", "faskes"})
 TK_KEYWORDS = frozenset({"bpjs", "ketenagakerjaan", "bpjstk", "kpj", "jamsostek", "jht"})

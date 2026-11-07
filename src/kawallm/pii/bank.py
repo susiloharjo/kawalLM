@@ -38,7 +38,7 @@ GENERIC_LENGTHS = frozenset(range(10, 17))
 _ALL_KEYWORDS = frozenset(BANK_ACCOUNT_LENGTHS) | GENERIC_KEYWORDS
 
 # Digit groups separated by single space/dot/dash, 9–19 digits total.
-ACCOUNT_RE = re.compile(r"(?<![\d.\-])\d(?:[\s.\-]?\d){8,18}(?![\d])")
+ACCOUNT_RE = re.compile(r"\d(?<![\d.\-].)(?:[\s.\-]?\d){8,18}(?!\d)")
 _WORD_RE = re.compile(r"[A-Za-z]+")
 
 
@@ -52,14 +52,16 @@ def find_bank_account(text: str, window: int = 5) -> list[PIIMatch]:
         if len({ch for ch in raw if not ch.isdigit()}) > 1:
             continue
         n = len(digits_only(raw))
-        before = [w.lower() for w in _WORD_RE.findall(text[max(0, m.start() - 120) : m.start()])]
-        after = [w.lower() for w in _WORD_RE.findall(text[m.end() : m.end() + 120])]
-        nearby = list(reversed(before[-window:])) + after[:window]
+        if n not in GENERIC_LENGTHS:
+            continue
+        before = _WORD_RE.findall(text[max(0, m.start() - 120) : m.start()].lower())[-window:]
+        after = _WORD_RE.findall(text[m.end() : m.end() + 120].lower())[:window]
+        nearby = list(reversed(before)) + after
         bank = next((w for w in nearby if w in BANK_ACCOUNT_LENGTHS), None)
         if bank is not None:
             if n in BANK_ACCOUNT_LENGTHS[bank]:
                 out.append(PIIMatch("ID_BANK_ACCOUNT", m.start(), m.end(), raw, 0.95, {"bank": bank}))
             continue
-        if any(w in GENERIC_KEYWORDS for w in nearby) and n in GENERIC_LENGTHS:
+        if any(w in GENERIC_KEYWORDS for w in nearby):
             out.append(PIIMatch("ID_BANK_ACCOUNT", m.start(), m.end(), raw, 0.7, {}))
     return out
