@@ -30,6 +30,10 @@ jobs:
       - run: uv build
       - run: uvx twine check dist/*
       - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Rekor (Sigstore transparency log) was returning HTTP 500 for 0.2.0. Re-enable (remove this
+          # line) once Rekor is healthy again, so later releases carry signed provenance.
+          attestations: false
 
   image:
     needs: test
