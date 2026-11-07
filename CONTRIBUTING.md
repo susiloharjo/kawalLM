@@ -119,6 +119,17 @@ python scripts/build_wilayah.py /tmp/wilayah/db
 
 Hanya data berlisensi kompatibel Apache-2.0 (MIT, BSD, Apache, CC0, CC-BY) yang boleh dibundel, dan wajib dicatat di `NOTICE`. Data non-komersial (CC BY-NC) **tidak boleh** masuk repo — sediakan script import seperti `scripts/import_abusive_lexicon.py`.
 
+## Checklist rilis (maintainer)
+
+Setiap rilis wajib memperbarui dokumentasi, bukan hanya kode:
+
+1. `README.md`: entitas, parameter, tabel/benchmark, bagian *Keterbatasan*, dan nomor yang berubah.
+2. `CHANGELOG.md`: pindahkan isi *Unreleased* ke `## [X.Y.Z] - tanggal`.
+3. `__version__` di `src/kawallm/__init__.py` (satu-satunya sumber versi).
+4. `docs/usage.md` bila ada parameter atau perilaku baru.
+5. `uv run pytest`: `tests/test_docs_in_sync.py` gagal bila entitas belum ada di README atau versi belum punya entri CHANGELOG.
+6. `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`. Workflow publish menjalankan test yang sama sebelum upload.
+
 ## Checklist PR
 
 - [ ] Test hijau, coverage ≥ 90%

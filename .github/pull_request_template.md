@@ -17,4 +17,5 @@
 - [ ] Test baru memakai **data sintetis** (`kawallm.synthetic`), tidak ada data pribadi asli
 - [ ] Untuk kamus: tiap istilah sudah dipertimbangkan potensi false positive-nya (bobot 0.3/0.5 untuk kata ambigu)
 - [ ] Benchmark tidak memburuk signifikan (`python benchmarks/bench_latency.py`) bila menyentuh hot path
+- [ ] `README.md` diperbarui bila perilaku, entitas, parameter, atau keterbatasan berubah, dan `CHANGELOG.md` (bagian Unreleased) diisi
 - [ ] Data pihak ketiga yang ditambahkan berlisensi kompatibel Apache-2.0 dan dicatat di `NOTICE`

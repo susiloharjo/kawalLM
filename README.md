@@ -20,6 +20,8 @@ KawalLM memaskir PII lokal (NIK, NPWP, NIP, No. HP, rekening bank, BPJS, NISN, p
 | NIK 16 digit | Tidak dikenali / regex mentah → resi & barcode ikut terblokir | Validasi kode wilayah Kemendagri (7.879 kecamatan, 2016–2025) + tanggal lahir (DD+40 untuk perempuan) + serial ≠ 0000 |
 | NPWP 15/16 digit | Tidak ada | Checksum Luhn digit ke-9, format bertitik atau keyword-gated |
 | No. HP | Generic | Prefix operator (Telkomsel, Indosat, Tri, XL, Axis, Smartfren) |
+| NIP (PNS) | Tidak ada | 18 digit divalidasi tanggal lahir, bulan pengangkatan (usia ≥ 17), dan gender |
+| NISN, paspor, SIM | Tidak ada | Format + kata kunci di dekat nomor (tanpa checksum publik, jadi resi/barcode tidak ikut termaskir) |
 | Rekening bank | Tidak ada | Proximity 5 kata + panjang per bank (BCA 10, Mandiri 13, BRI 15, …) |
 | Judol / pinjol | Tidak paham "g4c0r", "s.l.o.t", "depo pulsa" | Aho-Corasick + normalisasi leetspeak/spasi + skor berbobot |
 | Prompt injection ID | Fokus Bahasa Inggris | Rule "abaikan instruksi sebelumnya", "bocorkan system prompt", DAN, dll. |
@@ -171,13 +173,14 @@ Default **blocking**: `JUDOL_PINJOL`, `SARA_HATE_SPEECH`, `JAILBREAK`. `TOXIC_SL
 | 500 | 1.22 ms | 1.45 ms | 2.16 ms | ~780 req/s | 21 MB |
 | 1.000 | 2.36 ms | 2.83 ms | 5.3 ms | ~400 req/s | 21 MB |
 
-**vs NFR PRD:** p95 ≤ 5 ms @1.000 kata ✅ · RAM < 120 MB ✅ · zero telemetry ✅ · coverage ≥ 90% ✅ (97%).
+**vs NFR PRD:** p95 ≤ 5 ms @1.000 kata ✅ · RAM < 120 MB ✅ · zero telemetry ✅ · coverage ≥ 90% ✅ (gate CI).
 Throughput ≥ 1.500 req/s pada 2 vCPU **tercapai untuk prompt pendek (≤ ~200 kata)**, tidak untuk payload 1.000 kata (~800 req/s di 2 core). Dua target ini secara matematis tidak bisa sama-sama terpenuhi: p95 5 ms per request = maks ~200 req/s per core.
 
 ## Keterbatasan (jujur)
 
 - **Bukan classifier.** Dictionary + rule menangkap promosi spam, slur, dan pola injection yang eksplisit. Pada dataset [IndoSafety](https://github.com/falensiazmi/IndoSafety) (3.014 *pertanyaan berbahaya* — kategori yang berbeda), hanya 0,3% diblokir. Pertanyaan berbahaya semantik butuh model (Sprint 4: ONNX classifier). Jalankan sendiri: `python scripts/eval_indosafety.py`.
 - **Kamus bahasa daerah masih seed** dan perlu verifikasi penutur asli — ini area kontribusi utama.
+- **False positive** diukur pada set kalimat wajar `tests/data/benign_id.txt` (~110 kalimat buatan maintainer, target < 1%, saat ini 0 terdampak). Set ini kecil dan ditulis oleh maintainer; kalimat nyata dari pengguna sangat kami butuhkan.
 - Validasi NIK/NPWP memeriksa **format**, bukan keberadaan orangnya.
 - Vault reversible bersifat in-memory per proses; untuk multi-replica gunakan sticky session.
 - Safety scan tidak memeriksa argumen `tool_calls` kecuali role `assistant` ditambahkan ke `scan_roles` (PII di argumen selalu dimaskir).
