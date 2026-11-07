@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import threading
 import time
 import uuid
@@ -11,10 +10,10 @@ from dataclasses import dataclass, field
 
 from .audit import AuditLog, AuditSink, as_audit_log
 from .pii import ALL_ENTITIES, PIIMatch, detect_pii
+from .placeholders import StreamDeanonymizer, assign_token, restore_tokens
 from .safety import SafetyResult, SafetyScanner
 
 MASK_MODES = ("token", "redact", "partial", "reversible")
-_TOKEN_RE = re.compile(r"<(?:ID_[A-Z_]+|EMAIL)_\d+>")
 
 
 @dataclass
@@ -26,24 +25,6 @@ class MaskResult:
     @property
     def found(self) -> bool:
         return bool(self.entities)
-
-
-def _assign_token(fwd: dict[str, str], rev: dict[str, str], entity: str, original: str) -> str:
-    """Return the token for ``original``, creating ``<ENTITY_n>`` if new. Mutates both maps."""
-    token = rev.get(original)
-    if token is None:
-        n = sum(1 for t in fwd if t.startswith(f"<{entity}_")) + 1
-        token = f"<{entity}_{n}>"
-        fwd[token] = original
-        rev[original] = token
-    return token
-
-
-def restore_tokens(text: str, mapping: dict[str, str]) -> str:
-    """Replace ``<ID_X_n>`` tokens in ``text`` using a token -> original mapping."""
-    if not mapping or not text:
-        return text
-    return _TOKEN_RE.sub(lambda m: mapping.get(m.group(), m.group()), text)
 
 
 class Vault:
@@ -72,7 +53,7 @@ class Vault:
             if len(self._data) > self.max_sessions or (len(self._data) and len(self._data) % 1000 == 0):
                 self._purge(now)
             _, fwd, rev = self._data.get(session_id, (0.0, {}, {}))
-            token = _assign_token(fwd, rev, entity, original)
+            token = assign_token(fwd, rev, entity, original)
             self._data[session_id] = (now + self.ttl, fwd, rev)
             return token
 
@@ -178,6 +159,10 @@ class KawalLMEngine:
         """Restore ``<ID_X_n>`` tokens produced in reversible mode (vault-backed)."""
         return restore_tokens(text, self.vault.mapping(session_id))
 
+    def unmask_stream(self, session_id: str) -> StreamDeanonymizer:
+        """Streaming counterpart of :meth:`unmask` for a vault session."""
+        return StreamDeanonymizer(self.vault.mapping(session_id))
+
     def anonymize(self, text: str, session_map: dict[str, str] | None = None) -> tuple[str, dict[str, str]]:
         """Stateless reversible masking: returns ``(text, session_map)``.
 
@@ -192,7 +177,7 @@ class KawalLMEngine:
         parts, last = [], 0
         for m in self.detect(text):
             parts.append(text[last : m.start])
-            parts.append(_assign_token(fwd, rev, m.entity, m.text))
+            parts.append(assign_token(fwd, rev, m.entity, m.text))
             last = m.end
         parts.append(text[last:])
         return "".join(parts), fwd
@@ -200,6 +185,11 @@ class KawalLMEngine:
     @staticmethod
     def deanonymize(text: str, session_map: dict[str, str]) -> str:
         return restore_tokens(text, session_map)
+
+    @staticmethod
+    def deanonymize_stream(session_map: dict[str, str]) -> StreamDeanonymizer:
+        """Streaming counterpart of :meth:`deanonymize`: ``feed()`` each chunk, then ``flush()``."""
+        return StreamDeanonymizer(session_map)
 
 
 @dataclass

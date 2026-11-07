@@ -4,6 +4,14 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikut
 
 ## [Unreleased]
 
+### Changed (breaking, mode reversible)
+- Placeholder reversible sekarang memuat nonce acak per sesi: `<ID_NIK_1>` menjadi `<ID_NIK_1_a3f2c9>`. Mode `token`/`redact`/`partial` tidak berubah. Peta sesi lama (0.1.x) tetap bisa dipulihkan lewat pencocokan persis, tetapi token baru selalu bernonce. Alasan: teks yang diketik user atau peta sesi yang salah dulu bisa memulihkan data asli tanpa error.
+- Pemulihan placeholder kini toleran terhadap tulisan ulang LLM (huruf kecil, tanpa kurung, spasi, `[..]`, `(..)`, `&lt;..&gt;`). Hanya placeholder yang ada di peta sesi yang dipulihkan.
+- Hold-back streaming LiteLLM 48 -> 64 karakter.
+
+### Added
+- `StreamDeanonymizer` (+ `KawalLM.deanonymize_stream`, `KawalLMEngine.unmask_stream`): pemulihan placeholder untuk respons streaming di luar LiteLLM.
+
 ### Added
 - Audit log (`kawallm.audit`): `AuditLog`, `AuditEvent`, `logging_sink`, `JsonlFileSink`. Event berisi aksi, jumlah kemunculan per entitas, dan kategori pelanggaran, tanpa nilai PII, teks, atau isi vault. `KawalLM(audit=...)` + `scan(..., context=...)`; guardrail LiteLLM: `audit_log`, `audit_file`, `audit_include_clean`, `audit_include_user`. Sink yang gagal tidak menggagalkan request.
 

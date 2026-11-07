@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+from helpers import shape, token
 
 pytest.importorskip("litellm")
 
@@ -68,9 +69,10 @@ async def test_reversible_roundtrip_and_leak_masking():
     g = _guard(masking_mode="reversible")
     data = {"litellm_call_id": "abc", "messages": [{"role": "user", "content": f"NIK {NIK}"}]}
     await g.async_pre_call_hook(None, None, data, "completion")
-    assert data["messages"][0]["content"] == "NIK <ID_NIK_1>"
+    assert shape(data["messages"][0]["content"]) == "NIK <ID_NIK_1>"
     assert data["metadata"]["kawallm_session"] == "abc"
-    resp = _response("Data <ID_NIK_1> valid. Kontak lain 081299998888", args='{"nik": "<ID_NIK_1>"}')
+    tok = token(data["messages"][0]["content"], "<ID_NIK_1>")
+    resp = _response(f"Data {tok} valid. Kontak lain 081299998888", args=f'{{"nik": "{tok}"}}')
     out = await g.async_post_call_success_hook(data, None, resp)
     msg = out.choices[0].message
     assert msg.content == f"Data {NIK} valid. Kontak lain <ID_PHONE>"
@@ -83,7 +85,9 @@ async def test_reversible_keeps_numbering_across_turns_of_same_call():
     await g.async_pre_call_hook(None, None, first, "completion")
     second = {"litellm_call_id": "t1", "messages": [{"role": "user", "content": f"NIK {NIK} dan HP 081288889999"}]}
     await g.async_pre_call_hook(None, None, second, "completion")
-    assert second["messages"][0]["content"] == "NIK <ID_NIK_1> dan HP <ID_PHONE_1>"
+    assert shape(second["messages"][0]["content"]) == "NIK <ID_NIK_1> dan HP <ID_PHONE_1>"
+    # same call id => same session nonce, so the number keeps pointing at the same value
+    assert token(second["messages"][0]["content"], "<ID_NIK_1>") == token(first["messages"][0]["content"], "<ID_NIK_1>")
 
 
 async def test_reversible_sessions_do_not_leak_between_calls():
@@ -92,15 +96,17 @@ async def test_reversible_sessions_do_not_leak_between_calls():
     b = {"litellm_call_id": "b", "messages": [{"role": "user", "content": "halo"}]}
     await g.async_pre_call_hook(None, None, a, "completion")
     await g.async_pre_call_hook(None, None, b, "completion")
-    out = await g.async_post_call_success_hook(b, None, _response("Data <ID_NIK_1>"))
-    assert out.choices[0].message.content == "Data <ID_NIK_1>"  # call b never sent a NIK
+    tok_a = token(a["messages"][0]["content"], "<ID_NIK_1>")
+    out = await g.async_post_call_success_hook(b, None, _response(f"Data {tok_a}"))
+    assert out.choices[0].message.content == f"Data {tok_a}"  # call b never sent a NIK; a's token restores nothing
 
 
 async def test_reversible_tool_call_without_arguments_is_untouched():
     g = _guard(masking_mode="reversible")
     data = {"litellm_call_id": "x", "messages": [{"role": "user", "content": f"NIK {NIK}"}]}
     await g.async_pre_call_hook(None, None, data, "completion")
-    out = await g.async_post_call_success_hook(data, None, _response("ok <ID_NIK_1>"))
+    tok = token(data["messages"][0]["content"], "<ID_NIK_1>")
+    out = await g.async_post_call_success_hook(data, None, _response(f"ok {tok}"))
     assert out.choices[0].message.content == f"ok {NIK}"
     assert out.choices[0].message.tool_calls is None
 
@@ -119,9 +125,10 @@ async def test_streaming_split_values():
     g = _guard(masking_mode="reversible")
     data = {"messages": [{"role": "user", "content": f"NIK {NIK}"}]}
     await g.async_pre_call_hook(None, None, data, "completion")
+    tok = token(data["messages"][0]["content"], "<ID_NIK_1>")
     pieces = [
-        "Halo, data anda <ID_N",
-        "IK_1> sudah ",
+        f"Halo, data anda {tok[:7]}",
+        f"{tok[7:]} sudah ",
         "kami cek. Hubungi 0812",
         "-3456-7890 untuk info lebih lanjut ",
         "ya. " * 20,
@@ -212,8 +219,9 @@ async def test_reversible_tool_call_arguments_roundtrip():
         ],
     }
     out = await g.async_pre_call_hook(None, None, data, "completion")
-    assert out["messages"][0]["content"] == "NIK <ID_NIK_1>"
-    assert json.loads(out["messages"][1]["tool_calls"][0]["function"]["arguments"]) == {"nik": "<ID_NIK_1>"}
+    tok = token(out["messages"][0]["content"], "<ID_NIK_1>")
+    assert out["messages"][0]["content"] == f"NIK {tok}"
+    assert json.loads(out["messages"][1]["tool_calls"][0]["function"]["arguments"]) == {"nik": tok}
 
 
 # ---------------------------------------------------------------- audit trail
@@ -300,4 +308,4 @@ async def test_audit_does_not_change_behaviour():
     b = {"litellm_call_id": "z", "messages": [{"role": "user", "content": f"NIK {NIK} HP 081234567890"}]}
     await plain.async_pre_call_hook(None, None, a, "completion")
     await audited.async_pre_call_hook(None, None, b, "completion")
-    assert a["messages"] == b["messages"]
+    assert shape(a["messages"][0]["content"]) == shape(b["messages"][0]["content"])  # nonce differs per vault

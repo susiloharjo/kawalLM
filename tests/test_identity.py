@@ -1,4 +1,5 @@
 import pytest
+from helpers import shape
 
 from kawallm import KawalLM, KawalLMEngine, synthetic
 from kawallm.pii import detect_pii, find_nip, find_nisn, find_passport, find_sim, validate_nip
@@ -67,7 +68,7 @@ def test_masking_and_reversible_roundtrip():
     assert KawalLM().scan(text).sanitized_text == "NIP <ID_NIP>, NISN <ID_NISN>, paspor <ID_PASSPORT>, SIM <ID_SIM>"
     e = KawalLMEngine(mode="reversible")
     r = e.mask(text)
-    assert r.text == "NIP <ID_NIP_1>, NISN <ID_NISN_1>, paspor <ID_PASSPORT_1>, SIM <ID_SIM_1>"
+    assert shape(r.text) == "NIP <ID_NIP_1>, NISN <ID_NISN_1>, paspor <ID_PASSPORT_1>, SIM <ID_SIM_1>"
     assert e.unmask(r.text, r.session_id) == text
 
 

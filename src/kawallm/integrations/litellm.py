@@ -37,7 +37,7 @@ from kawallm.audit import AuditLog, JsonlFileSink, logging_sink
 from kawallm.core import KawalLMEngine
 
 _SESSION_KEY = "kawallm_session"
-_HOLDBACK = 48
+_HOLDBACK = 64  # >= kawallm.placeholders.MAX_PLACEHOLDER_LEN
 
 
 def _as_bool(v: Any) -> bool:

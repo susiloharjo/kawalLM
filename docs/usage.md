@@ -136,14 +136,15 @@ Dengan `masking_mode: reversible` dan `restore_output: true`:
 
 ```
 User   : "Kirim SMS ke 081288889999"
-LLM    : menerima "Kirim SMS ke <ID_PHONE_1>"  → menjawab "Terkirim ke <ID_PHONE_1>"
+LLM    : menerima "Kirim SMS ke <ID_PHONE_1_a3f2c9>"  → menjawab "Terkirim ke <ID_PHONE_1_a3f2c9>"
 User   : menerima "Terkirim ke 081288889999"
 ```
 
 Berlaku juga untuk streaming dan untuk argumen `tool_calls` di response. Hal yang perlu diperhatikan:
 
 - Mapping disimpan **di memori satu proses**, per `litellm_call_id`. Kalau LiteLLM berjalan dengan beberapa replica dan response bisa mendarat di replica lain, pakai sticky session atau mode `token`.
-- Hanya token persis `<ID_PHONE_1>` yang dipulihkan. Kalau model menuliskannya dengan bentuk lain (`ID_PHONE_1`, huruf kecil), token itu dibiarkan apa adanya.
+- Placeholder memuat **nonce acak per sesi** (`a3f2c9`). Yang dipulihkan hanya placeholder yang ada di peta sesi itu. Teks yang diketik user (`<ID_PHONE_1>`), tebakan nonce, dan placeholder dari request lain tidak memulihkan apa pun.
+- Placeholder yang ditulis ulang LLM tetap dipulihkan: huruf kecil, tanpa kurung, spasi, `[..]`, `(..)`, dan `&lt;..&gt;` (penting bila UI merender markdown).
 - Sesi antar-request terisolasi: token dari satu request tidak pernah memulihkan nilai milik request lain.
 
 ### 4. Audit log (jejak kepatuhan tanpa menyimpan PII)
@@ -244,11 +245,11 @@ raw_input = "Kirim SMS konfirmasi ke 081288889999 sekarang."
 
 # 1. Pre-call: masking sebelum ke LLM
 anonymized_prompt, session_map = guard.anonymize(raw_input)
-# anonymized_prompt = "Kirim SMS konfirmasi ke <ID_PHONE_1> sekarang."
-# session_map       = {"<ID_PHONE_1>": "081288889999"}
+# anonymized_prompt = "Kirim SMS konfirmasi ke <ID_PHONE_1_a3f2c9> sekarang."
+# session_map       = {"<ID_PHONE_1_a3f2c9>": "081288889999"}
 
 # 2. LLM memproses prompt anonim
-llm_response = "Baik, konfirmasi berhasil dikirimkan ke <ID_PHONE_1>."
+llm_response = f"Baik, konfirmasi berhasil dikirimkan ke {next(iter(session_map))}."
 
 # 3. Post-call: kembalikan nilai asli untuk frontend
 final_output = guard.deanonymize(llm_response, session_map)
@@ -259,8 +260,17 @@ Percakapan multi-turn: kirim `session_map` yang sama lagi supaya penomoran token
 
 ```python
 text2, session_map = guard.anonymize("dan juga ke 081377776666", session_map)
-# "dan juga ke <ID_PHONE_2>"
+# "dan juga ke <ID_PHONE_2_a3f2c9>"   (nonce sama dalam satu sesi)
 ```
+
+Respons streaming (placeholder bisa terpotong di batas chunk):
+
+```python
+d = guard.deanonymize_stream(session_map)
+out = "".join(d.feed(chunk) for chunk in llm_stream) + d.flush()
+```
+
+`feed()` menahan sekitar 64 karakter terakhir sampai placeholder utuh. `flush()` mengeluarkan sisanya di akhir stream.
 
 > `session_map` berisi data pribadi asli. Simpan hanya selama sesi (mis. di memory/Redis dengan TTL), jangan di-log.
 
