@@ -2,6 +2,49 @@
 
 Terima kasih sudah mau berkontribusi! 🙏 Panduan ini dalam Bahasa Indonesia; PR/issue dalam Bahasa Inggris juga diterima.
 
+## Yuk ikut bangun KawalLM
+
+KawalLM adalah guardrail open-source untuk kepatuhan UU PDP di infrastruktur AI Indonesia. Kualitasnya bergantung pada orang yang paham konteks lokal: penutur bahasa daerah, praktisi keamanan, engineer data, dan siapa pun yang pernah kesal karena guardrail global tidak mengerti NIK atau "slot gacor". **Kamu tidak perlu paham ML untuk membantu.** Banyak kontribusi paling berharga hanya berupa JSON atau satu kalimat uji.
+
+Mulai dalam 10 menit:
+
+1. Clone repo dan siapkan lingkungan (lihat [Setup](#setup)), lalu `uv run pytest` supaya yakin semuanya hijau.
+2. Pilih satu item dari tabel di bawah. Untuk yang bertanda 🟢, kamu bisa langsung buka PR tanpa diskusi.
+3. Untuk perubahan besar (🟡/🔴), buka issue dulu supaya arahnya sama sebelum kamu menulis banyak kode.
+4. Buka PR kecil dan fokus. Satu PR, satu hal.
+
+### Yang paling dibutuhkan
+
+| | Apa | Kenapa penting | Di mana | Cara membuktikan |
+|---|---|---|---|---|
+| 🟢 | **Kamus bahasa daerah**: verifikasi isi Jawa, Sunda, Batak, Minang, Sulawesi (masih seed) dan tambah bahasa lain (Bali, Bugis, Madura, Aceh, Betawi, dll.) | Penutur asli satu-satunya yang bisa menilai mana kata kasar, mana kata biasa | `src/kawallm/safety/words/regional_*.json` | Contoh positif dan negatif di `tests/test_safety.py` |
+| 🟢 | **Kalimat wajar untuk eval false positive** | Target kita FP < 1%, tapi set ujinya baru ~100 kalimat buatan maintainer. Makin beragam makin jujur | `tests/data/benign_id.txt` | `uv run pytest tests/test_benign.py` |
+| 🟢 | **Laporkan false positive / false negative** (kalimat sah yang terblokir, atau spam judol/pinjol yang lolos) | Setiap laporan jadi test regresi | Buka issue (template tersedia) | Sertakan teks sintetis, jangan data asli |
+| 🟢 | **Panjang rekening bank** yang belum ada (sekarang 19 bank) | Rekening hanya dimaskir kalau panjangnya cocok dengan banknya | `src/kawallm/pii/bank.py` | Cantumkan sumber resmi di docstring + test |
+| 🟢 | **Dokumentasi**: README versi Inggris, contoh pemakaian, perbaikan typo | Saat ini hampir semua dokumen berbahasa Indonesia, sehingga sulit ditemukan engineer di luar Indonesia | `README.md`, `docs/` | PR cukup berisi teks |
+| 🟡 | **Identitas baru**: NIP, NISN, paspor, SIM | Requirement FR-1.7, belum ada | `src/kawallm/pii/` (ikuti pola `nik.py`, `npwp.py`, `bpjs.py`) | Validasi/checksum atau keyword-proximity + test false positive |
+| 🟡 | **Audit log** untuk kebutuhan audit UU PDP: hanya kategori, jenis entitas, dan jumlah, tanpa nilai PII | Persona enterprise membutuhkan jejak audit | `src/kawallm/integrations/litellm.py` dan `core.py` | Test bahwa log tidak pernah memuat nilai asli |
+| 🟡 | **Vault reversible yang bisa dipasang (Redis dsb.)** | Vault sekarang in-memory per proses, jadi tidak jalan lintas replica | `Vault` di `src/kawallm/core.py` | Antarmuka yang sama dengan `Vault` + test konkurensi |
+| 🟡 | **Integrasi lain** (usulan: LangChain, Haystack, Flask/Django middleware) | Memperluas tempat KawalLM bisa dipasang | `src/kawallm/integrations/` | Import tetap lazy (extras), tidak menambah dependency core |
+| 🟡 | **Cakupan test** `integrations/presidio.py` (sekitar 82%) | Gate CI kita 90% total | `tests/` | `uv run pytest --cov` |
+| 🔴 | **Classifier semantik (ONNX)** untuk pertanyaan berbahaya | Dictionary + rule hanya menangkap 0,3% dari dataset IndoSafety; ini batas produk terbesar | Belum ada modul; diskusikan di issue | Eval dengan `scripts/eval_indosafety.py`, tetap CPU-only dan p95 terjaga |
+
+Pertanyaan terbuka yang butuh pendapat kamu (komentar di issue): apakah classifier sebaiknya fine-tune sendiri atau memakai model terbuka yang di-distill (IndoPII Mini, SEALGuard)? Siapa yang mau menjadi reviewer penutur asli untuk tiap bahasa daerah?
+
+### Prinsip yang membuat KawalLM berbeda
+
+Pegang ini saat berkontribusi, karena PR yang melanggarnya akan diminta direvisi:
+
+- **Deterministik dan lokal.** Tanpa network call, tanpa GPU, tanpa telemetry.
+- **Validasi, bukan regex mentah.** Nomor yang gagal validasi tidak boleh dimaskir.
+- **Kurangi false positive dulu.** Memblokir kalimat sah lebih merusak kepercayaan daripada melewatkan satu kasus ambigu.
+- **Cepat.** p95 ≤ 5 ms untuk 1.000 kata. Jalankan `python benchmarks/bench_latency.py` kalau menyentuh hot path.
+- **Hanya data sintetis.** Lihat aturan emas di bawah.
+
+### Ngobrol dulu
+
+Belum yakin harus mulai dari mana? Buka issue dengan template *feature request* dan ceritakan latar belakang serta waktu luangmu, nanti kita carikan tugas yang cocok. Kontribusi sekecil satu kata di kamus atau satu kalimat di eval set tetap dihitung, dan kamu bisa mencantumkan username GitHub-mu di field `contributors` pada file kamus.
+
 ## Aturan emas: jangan pernah pakai data pribadi asli
 
 Semua test, issue, dan contoh **wajib** memakai data sintetis:

@@ -193,7 +193,7 @@ Lihat [`NOTICE`](NOTICE).
 
 ## Kontribusi
 
-Lihat [CONTRIBUTING.md](CONTRIBUTING.md). Kontribusi paling dibutuhkan: kamus bahasa daerah, panjang rekening bank, identitas baru (NIP, NISN, paspor, SIM).
+**Ikut bangun KawalLM.** Kami butuh penutur bahasa daerah, praktisi keamanan, dan engineer yang peduli pelindungan data pribadi. Banyak kontribusi hanya berupa JSON atau satu kalimat uji, tanpa perlu paham ML. Daftar apa yang paling dibutuhkan (kamus daerah, eval false positive, identitas NIP/NISN/paspor/SIM, audit log, classifier) ada di [CONTRIBUTING.md](CONTRIBUTING.md#yuk-ikut-bangun-kawallm).
 
 ## Lisensi
 
