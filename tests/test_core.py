@@ -46,7 +46,19 @@ def test_vault_max_sessions():
     v = Vault(max_sessions=2)
     for i in range(5):
         v.token_for(f"s{i}", "ID_NIK", "x")
-    assert len(v._data) <= 3
+    assert len(v._data) == 2
+    assert set(v._data) == {"s3", "s4"}
+
+
+def test_custom_vault_backend():
+    from kawallm import VaultBackend
+
+    custom = Vault()
+    assert isinstance(custom, VaultBackend)
+    e = KawalLMEngine(mode="reversible", vault=custom)
+    r = e.mask(f"NIK {NIK}", "sesi-kustom")
+    assert custom.mapping("sesi-kustom")
+    assert e.unmask(r.text, "sesi-kustom") == f"NIK {NIK}"
 
 
 def test_mask_disabled_and_empty():

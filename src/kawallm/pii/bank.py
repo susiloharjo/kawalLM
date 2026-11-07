@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-from .base import PIIMatch, digits_only
+from .base import PIIMatch, digits_only, mentions_any
 
 BANK_ACCOUNT_LENGTHS: dict[str, frozenset[int]] = {
     "bca": frozenset({10}),
@@ -35,6 +35,7 @@ BANK_ACCOUNT_LENGTHS: dict[str, frozenset[int]] = {
 }
 GENERIC_KEYWORDS = frozenset({"rekening", "rek", "norek", "account", "acc", "transfer", "tf"})
 GENERIC_LENGTHS = frozenset(range(10, 17))
+_ALL_KEYWORDS = frozenset(BANK_ACCOUNT_LENGTHS) | GENERIC_KEYWORDS
 
 # Digit groups separated by single space/dot/dash, 9–19 digits total.
 ACCOUNT_RE = re.compile(r"(?<![\d.\-])\d(?:[\s.\-]?\d){8,18}(?![\d])")
@@ -42,17 +43,23 @@ _WORD_RE = re.compile(r"[A-Za-z]+")
 
 
 def find_bank_account(text: str, window: int = 5) -> list[PIIMatch]:
+    if not mentions_any(text, _ALL_KEYWORDS):
+        return []
     out = []
     for m in ACCOUNT_RE.finditer(text):
-        n = len(digits_only(m.group()))
+        raw = m.group()
+        # Reject candidates that mix different separators (e.g. "2026-11-07 20.45").
+        if len({ch for ch in raw if not ch.isdigit()}) > 1:
+            continue
+        n = len(digits_only(raw))
         before = [w.lower() for w in _WORD_RE.findall(text[max(0, m.start() - 120) : m.start()])]
         after = [w.lower() for w in _WORD_RE.findall(text[m.end() : m.end() + 120])]
         nearby = list(reversed(before[-window:])) + after[:window]
         bank = next((w for w in nearby if w in BANK_ACCOUNT_LENGTHS), None)
         if bank is not None:
             if n in BANK_ACCOUNT_LENGTHS[bank]:
-                out.append(PIIMatch("ID_BANK_ACCOUNT", m.start(), m.end(), m.group(), 0.95, {"bank": bank}))
+                out.append(PIIMatch("ID_BANK_ACCOUNT", m.start(), m.end(), raw, 0.95, {"bank": bank}))
             continue
         if any(w in GENERIC_KEYWORDS for w in nearby) and n in GENERIC_LENGTHS:
-            out.append(PIIMatch("ID_BANK_ACCOUNT", m.start(), m.end(), m.group(), 0.7, {}))
+            out.append(PIIMatch("ID_BANK_ACCOUNT", m.start(), m.end(), raw, 0.7, {}))
     return out

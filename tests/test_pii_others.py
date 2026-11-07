@@ -43,6 +43,8 @@ def test_bank_proximity_and_length():
     # generic keyword
     assert find_bank_account("no rek 123456789012")[0].score < 0.9
     assert find_bank_account("ID pesanan 1234567890") == []
+    # mixed separators (e.g. date + time near 'transfer') must not match as bank account
+    assert find_bank_account("bukti transfer tanggal 2026-11-07 20.45") == []
 
 
 def test_bank_after_number():

@@ -31,6 +31,7 @@ SUPPORTED_ENTITIES = [
     "ID_PASSPORT",
     "ID_SIM",
     "IP_ADDRESS",
+    "EMAIL",
 ]
 
 _DETECTOR_FOR = {
@@ -40,7 +41,13 @@ _DETECTOR_FOR = {
 
 
 class KawalLMRecognizer(EntityRecognizer):
-    def __init__(self, supported_language: str = "id", supported_entities: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        supported_language: str = "id",
+        supported_entities: list[str] | None = None,
+        validate_wilayah: bool = True,
+    ) -> None:
+        self.validate_wilayah = validate_wilayah
         super().__init__(
             supported_entities=supported_entities or SUPPORTED_ENTITIES,
             supported_language=supported_language,
@@ -57,12 +64,12 @@ class KawalLMRecognizer(EntityRecognizer):
             return []
         return [
             RecognizerResult(m.entity, m.start, m.end, m.score)
-            for m in detect_pii(text, detectors)
+            for m in detect_pii(text, detectors, check_region=self.validate_wilayah)
             if m.entity in wanted
         ]
 
 
-def analyzer_without_nlp(language: str = "id"):
+def analyzer_without_nlp(language: str = "id", validate_wilayah: bool = True):
     """AnalyzerEngine with only KawalLM recognizers and no spaCy model download."""
     from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
     from presidio_analyzer.nlp_engine import NlpArtifacts, NlpEngine
@@ -94,5 +101,5 @@ def analyzer_without_nlp(language: str = "id"):
             return [language]
 
     registry = RecognizerRegistry(supported_languages=[language])
-    registry.add_recognizer(KawalLMRecognizer(supported_language=language))
+    registry.add_recognizer(KawalLMRecognizer(supported_language=language, validate_wilayah=validate_wilayah))
     return AnalyzerEngine(registry=registry, nlp_engine=_NoNlp(), supported_languages=[language])

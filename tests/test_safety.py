@@ -15,6 +15,7 @@ def test_normalize():
     assert normalize("gacooooor") == " gacor "
     assert normalize("depo 10k 4d 2024") == " depo 10k 4d 2024 "
     assert normalize("Café") == " cafe "
+    assert normalize("sl\u200bot g\u200cac\u200dor\ufeff") == " slot gacor "
 
 
 @pytest.mark.parametrize(
@@ -122,3 +123,4 @@ def test_ambiguous_slang_alone_is_not_blocked(scanner):
         assert scanner.scan(text).safe, text
     assert not scanner.scan("slot gacor hari ini").safe
     assert not scanner.scan("s.l.o.t g4c0r").safe  # two ambiguous signals together still block
+    assert not scanner.scan("sl\u200bot g\u200cacor").safe  # zero-width char evasion still blocked

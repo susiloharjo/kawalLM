@@ -208,9 +208,8 @@ Throughput ≥ 1.500 req/s pada 2 vCPU **tercapai untuk prompt pendek (≤ ~200 
 - **False positive** diukur pada set kalimat wajar `tests/data/benign_id.txt` (~110 kalimat buatan maintainer, target < 1%, saat ini 0 terdampak). Set ini kecil dan ditulis oleh maintainer; kalimat nyata dari pengguna sangat kami butuhkan.
 - Validasi NIK/NPWP memeriksa **format**, bukan keberadaan orangnya.
 - Yang **tidak** terdeteksi: telepon rumah dengan kode area di luar daftar `AREA_CODES` (kota besar dan ibu kota kabupaten; tambahkan lewat PR) atau tanpa pemisah dan tanpa kata kunci (`telp`, `fax`), rekening tanpa kata konteks (mis. "Kirim ke 1234567890", disengaja agar nomor biasa tidak ikut termaskir), serta NIK/NPWP dengan tanggal atau checksum tidak valid (aman dari false positive, tetapi salah ketik lolos).
-- Vault reversible bersifat in-memory per proses; untuk multi-replica gunakan sticky session.
-- Audit log baru tersedia untuk `KawalLM.scan()` dan guardrail LiteLLM; middleware FastAPI belum mencatat event.
-- Safety scan tidak memeriksa argumen `tool_calls` kecuali role `assistant` ditambahkan ke `scan_roles` (PII di argumen selalu dimaskir).
+- Vault reversible default bersifat in-memory per proses; untuk multi-replica gunakan sticky session, `session_map` stateless, atau implementasikan protokol `VaultBackend`.
+- Safety scan tidak memeriksa argumen `tool_calls` kecuali role `assistant` (atau `tool` untuk output tool eksternal) ditambahkan ke `scan_roles` (PII di argumen selalu dimaskir).
 
 ## Sumber data & atribusi
 

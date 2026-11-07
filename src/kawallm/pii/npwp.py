@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 
-from .base import PIIMatch, digits_only, has_keyword_near
+from .base import PIIMatch, digits_only, has_keyword_near, mentions_any
 
 NPWP_FORMATTED_RE = re.compile(r"(?<![\d])0?\d{2}\.\d{3}\.\d{3}\.\d-\d{3}\.\d{3}(?![\d])")
 NPWP_PLAIN_RE = re.compile(r"(?<![\d.\-])(?:0\d{15}|\d{15})(?![\d])")
@@ -49,10 +49,12 @@ def validate_npwp(value: str) -> bool:
 
 def find_npwp(text: str) -> list[PIIMatch]:
     out = []
-    for m in NPWP_FORMATTED_RE.finditer(text):
-        if validate_npwp(m.group()):
-            out.append(PIIMatch("ID_NPWP", m.start(), m.end(), m.group(), 1.0))
-    for m in NPWP_PLAIN_RE.finditer(text):
-        if validate_npwp(m.group()) and has_keyword_near(text, m.start(), m.end(), NPWP_KEYWORDS):
-            out.append(PIIMatch("ID_NPWP", m.start(), m.end(), m.group(), 0.9))
+    if "." in text and "-" in text:
+        for m in NPWP_FORMATTED_RE.finditer(text):
+            if validate_npwp(m.group()):
+                out.append(PIIMatch("ID_NPWP", m.start(), m.end(), m.group(), 1.0))
+    if mentions_any(text, NPWP_KEYWORDS):
+        for m in NPWP_PLAIN_RE.finditer(text):
+            if validate_npwp(m.group()) and has_keyword_near(text, m.start(), m.end(), NPWP_KEYWORDS):
+                out.append(PIIMatch("ID_NPWP", m.start(), m.end(), m.group(), 0.9))
     return out

@@ -147,6 +147,43 @@ async def test_streaming_split_values():
     assert out.endswith("Terima kasih.")
 
 
+async def test_streaming_long_whitespace_free_and_tool_calls():
+    g = _guard(masking_mode="reversible")
+    data = {"litellm_call_id": "s-tc", "messages": [{"role": "user", "content": f"NIK {NIK}"}]}
+    await g.async_pre_call_hook(None, None, data, "completion")
+    tok = token(data["messages"][0]["content"], "<ID_NIK_1>")
+
+    # 1. Whitespace-free stream > 256 chars with embedded token
+    long_no_space = ("x" * 150) + tok + ("y" * 180)
+    chunks = [long_no_space[i : i + 40] for i in range(0, len(long_no_space), 40)]
+
+    async def gen_text():
+        for c in chunks:
+            yield _chunk(c)
+
+    emitted = [
+        c.choices[0].delta.content async for c in g.async_post_call_streaming_iterator_hook(None, gen_text(), data)
+    ]
+    assert any(emitted[:-1])  # flushed incrementally before final chunk despite no spaces
+    assert "".join(emitted) == ("x" * 150) + NIK + ("y" * 180)
+
+    # 2. Streaming tool_calls delta with split placeholder
+    def _tc_chunk(arg_part):
+        tc = SimpleNamespace(index=0, function=SimpleNamespace(arguments=arg_part))
+        return SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=None, tool_calls=[tc]))])
+
+    async def gen_tc():
+        yield _tc_chunk(f'{{"nik": "{tok[:8]}')
+        yield _tc_chunk(f'{tok[8:]}"}}')
+        yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=None, tool_calls=None))])
+
+    tc_parts = []
+    async for c in g.async_post_call_streaming_iterator_hook(None, gen_tc(), data):
+        for tc in getattr(c.choices[0].delta, "tool_calls", None) or []:
+            tc_parts.append(tc.function.arguments)
+    assert "".join(tc_parts) == f'{{"nik": "{NIK}"}}'
+
+
 def test_string_params_from_yaml():
     g = _guard(scan_roles="user,tool", entities="ID_NIK,ID_PHONE", block_categories="JAILBREAK", threshold="1.5")
     assert g.scan_roles == {"user", "tool"}
@@ -309,3 +346,66 @@ async def test_audit_does_not_change_behaviour():
     await plain.async_pre_call_hook(None, None, a, "completion")
     await audited.async_pre_call_hook(None, None, b, "completion")
     assert shape(a["messages"][0]["content"]) == shape(b["messages"][0]["content"])  # nonce differs per vault
+
+
+# ---------------------------------------------- streamed tool_calls (reversible)
+def _tc_chunk(*tcs):
+    return SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=None, tool_calls=list(tcs) or None))])
+
+
+def _tc(index, fragment):
+    return SimpleNamespace(index=index, function=SimpleNamespace(arguments=fragment))
+
+
+async def _stream_tool_calls(fragments, args_by_index):
+    """Run ``fragments`` [(index, text)] through the guardrail and return the accumulated arguments per index."""
+    g = _guard(masking_mode="reversible")
+    data = {"litellm_call_id": "tc", "messages": [{"role": "user", "content": f"NIK {NIK} dan 3171015501920002"}]}
+    await g.async_pre_call_hook(None, None, data, "completion")
+    tokens = list(g.engine.vault.mapping(g._session(data, create=False)))
+
+    async def gen():
+        for index, text in fragments(tokens):
+            yield _tc_chunk(_tc(index, text))
+        yield _tc_chunk()  # final chunk without tool calls
+
+    got: dict[int, str] = {}
+    async for chunk in g.async_post_call_streaming_iterator_hook(None, gen(), data):
+        for t in chunk.choices[0].delta.tool_calls or []:
+            got[t.index] = got.get(t.index, "") + t.function.arguments
+    return got
+
+
+async def test_streamed_tool_call_arguments_are_restored():
+    import json
+
+    def fragments(tokens):
+        text = json.dumps({"nik": tokens[0], "catatan": "ok"})
+        return [(0, text[:9]), (0, text[9:23]), (0, text[23:])]
+
+    got = await _stream_tool_calls(fragments, None)
+    assert json.loads(got[0]) == {"nik": NIK, "catatan": "ok"}
+
+
+async def test_parallel_streamed_tool_calls_do_not_lose_the_earlier_call():
+    """The first call's held-back tail used to be attached to a chunk that was already sent."""
+    import json
+
+    def fragments(tokens):
+        a0, a1 = json.dumps({"nik": tokens[0]}), json.dumps({"nik": tokens[1], "ok": True})
+        return [(0, a0[:10]), (0, a0[10:]), (1, a1[:8]), (1, a1[8:])]
+
+    got = await _stream_tool_calls(fragments, None)
+    assert json.loads(got[0]) == {"nik": NIK}
+    assert json.loads(got[1]) == {"nik": "3171015501920002", "ok": True}
+
+
+async def test_streamed_tool_call_with_long_arguments_keeps_every_byte():
+    import json
+
+    def fragments(tokens):
+        text = json.dumps({"nik": tokens[0], "isi": "kata " * 80})
+        return [(0, text[i : i + 7]) for i in range(0, len(text), 7)]
+
+    got = await _stream_tool_calls(fragments, None)
+    assert json.loads(got[0]) == {"nik": NIK, "isi": "kata " * 80}

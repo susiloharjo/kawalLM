@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from .base import PIIMatch, digits_only, has_keyword_near
+from .base import PIIMatch, digits_only, has_keyword_near, mentions_any
 
 BPJS_KES_RE = re.compile(r"(?<![\d])\d{4}[\s.\-]?\d{4}[\s.\-]?\d{5}(?![\d])")
 BPJS_TK_RE = re.compile(r"(?<![\d])\d{11}(?![\d])")
@@ -20,13 +20,15 @@ TK_KEYWORDS = frozenset({"bpjs", "ketenagakerjaan", "bpjstk", "kpj", "jamsostek"
 
 def find_bpjs(text: str) -> list[PIIMatch]:
     out = []
-    for m in BPJS_KES_RE.finditer(text):
-        d = digits_only(m.group())
-        if len(d) != 13:
-            continue
-        if d.startswith("000") or has_keyword_near(text, m.start(), m.end(), KES_KEYWORDS):
-            out.append(PIIMatch("ID_BPJS_KES", m.start(), m.end(), m.group(), 0.9))
-    for m in BPJS_TK_RE.finditer(text):
-        if has_keyword_near(text, m.start(), m.end(), TK_KEYWORDS):
-            out.append(PIIMatch("ID_BPJS_TK", m.start(), m.end(), m.group(), 0.85))
+    if "000" in text or mentions_any(text, KES_KEYWORDS):
+        for m in BPJS_KES_RE.finditer(text):
+            d = digits_only(m.group())
+            if len(d) != 13:
+                continue
+            if d.startswith("000") or has_keyword_near(text, m.start(), m.end(), KES_KEYWORDS):
+                out.append(PIIMatch("ID_BPJS_KES", m.start(), m.end(), m.group(), 0.9))
+    if mentions_any(text, TK_KEYWORDS):
+        for m in BPJS_TK_RE.finditer(text):
+            if has_keyword_near(text, m.start(), m.end(), TK_KEYWORDS):
+                out.append(PIIMatch("ID_BPJS_TK", m.start(), m.end(), m.group(), 0.85))
     return out

@@ -46,6 +46,12 @@ def digits_only(s: str) -> str:
     return "".join(ch for ch in s if ch.isdigit())
 
 
+def mentions_any(text: str, keywords: frozenset[str]) -> bool:
+    """Cheap pre-filter: True if any keyword occurs as a substring in ``text`` (case-insensitive)."""
+    low = text.lower()
+    return any(k in low for k in keywords)
+
+
 def has_keyword_near(text: str, start: int, end: int, keywords: frozenset[str], window_words: int = 5) -> str | None:
     """Return the first keyword found within ``window_words`` words around [start, end).
 

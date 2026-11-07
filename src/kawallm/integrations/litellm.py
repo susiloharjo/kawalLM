@@ -25,6 +25,7 @@ Behaviour
 
 from __future__ import annotations
 
+import copy
 import json
 import uuid
 from collections import Counter
@@ -35,6 +36,7 @@ from litellm.integrations.custom_guardrail import CustomGuardrail
 
 from kawallm.audit import AuditLog, JsonlFileSink, logging_sink
 from kawallm.core import KawalLMEngine
+from kawallm.placeholders import _LOOSE_RE, StreamDeanonymizer
 
 _SESSION_KEY = "kawallm_session"
 _HOLDBACK = 64  # >= kawallm.placeholders.MAX_PLACEHOLDER_LEN
@@ -291,6 +293,26 @@ class KawalLMGuardrail(CustomGuardrail):
         counts: Counter = Counter()
         buffer = ""
         pending = None
+        tc_streams: dict[int, tuple[StreamDeanonymizer, Any]] = {}
+
+        def flush_tool_calls(target: Any) -> None:
+            """Emit what the per-call de-anonymizers still hold as extra fragments on ``target``.
+
+            ``target`` must be a delta that has not been yielded yet. Appending to the call's own last
+            fragment is wrong: with parallel tool calls that chunk is long gone. Clients accumulate
+            fragments by ``index``, so a trailing fragment for an earlier index is valid.
+            """
+            extras = []
+            for deanon, last_tc in tc_streams.values():
+                rem = deanon.flush()
+                if rem:
+                    extra = copy.copy(last_tc)
+                    extra.function = copy.copy(last_tc.function)
+                    extra.function.arguments = rem
+                    extras.append(extra)
+            tc_streams.clear()
+            if extras and target is not None:
+                target.tool_calls = [*(getattr(target, "tool_calls", None) or []), *extras]
 
         def take_ready(final: bool) -> str:
             nonlocal buffer
@@ -305,6 +327,16 @@ class KawalLMGuardrail(CustomGuardrail):
                 if buffer[i].isspace() and not buffer[i - 1].isdigit() and buffer[i - 1] not in "+-.":
                     cut = i
                     break
+            if cut <= 0 and len(buffer) > _HOLDBACK * 4:
+                # Fallback for long whitespace-free streams (URLs, base64, minified JSON):
+                # cut at limit unless that splits a placeholder candidate or digit run.
+                cut = limit
+                for m in _LOOSE_RE.finditer(buffer):
+                    if m.start() < cut < m.end():
+                        cut = m.start()
+                        break
+                while cut > 0 and (buffer[cut - 1].isdigit() or buffer[cut - 1] in "+-."):
+                    cut -= 1
             if cut <= 0:
                 return ""
             ready, buffer = buffer[:cut], buffer[cut:]
@@ -316,14 +348,30 @@ class KawalLMGuardrail(CustomGuardrail):
 
         async for chunk in response:
             delta = delta_of(chunk)
-            if delta is not None and isinstance(getattr(delta, "content", None), str):
-                buffer += delta.content
-                delta.content = take_ready(final=False)
+            if delta is not None:
+                if isinstance(getattr(delta, "content", None), str):
+                    buffer += delta.content
+                    delta.content = take_ready(final=False)
+                tcs = getattr(delta, "tool_calls", None)
+                if tcs and sid and self.restore_output and self.engine.mode == "reversible":
+                    for tc in tcs:
+                        fn = getattr(tc, "function", None)
+                        if fn is not None and isinstance(getattr(fn, "arguments", None), str):
+                            idx = getattr(tc, "index", 0) or 0
+                            deanon, _ = tc_streams.get(idx, (None, None))
+                            if deanon is None:
+                                deanon = self.engine.unmask_stream(sid)
+                            fn.arguments = deanon.feed(fn.arguments)
+                            tc_streams[idx] = (deanon, tc)
+                elif tc_streams:
+                    flush_tool_calls(delta)
             if pending is not None:
                 yield pending
             pending = chunk
 
         tail = take_ready(final=True)
+        if tc_streams:
+            flush_tool_calls(delta_of(pending) if pending is not None else None)
         if pending is not None:
             delta = delta_of(pending)
             if tail and delta is not None:

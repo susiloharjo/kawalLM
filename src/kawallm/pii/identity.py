@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from datetime import date
 
-from .base import PIIMatch, digits_only, has_keyword_near
+from .base import PIIMatch, digits_only, has_keyword_near, mentions_any
 
 _SEP = r"[\s.\-]?"
 NIP_RE = re.compile(rf"(?<![\d])(\d{{8}}){_SEP}(\d{{6}}){_SEP}([12]){_SEP}(\d{{3}})(?![\d])")
@@ -27,12 +27,6 @@ SIM_KEYWORDS = frozenset({"sim", "mengemudi"})
 _MIN_BIRTH_YEAR = 1930
 _MIN_AGE_AT_APPOINTMENT = 17
 _MAX_YEAR = 2100
-
-
-def _mentions(text: str, keywords: frozenset[str]) -> bool:
-    """Cheap pre-filter: skip the regex scan entirely when no keyword occurs anywhere in the text."""
-    low = text.lower()
-    return any(k in low for k in keywords)
 
 
 def validate_nip(value: str) -> bool:
@@ -58,7 +52,7 @@ def find_nip(text: str) -> list[PIIMatch]:
 
 
 def find_nisn(text: str) -> list[PIIMatch]:
-    if not _mentions(text, NISN_KEYWORDS):
+    if not mentions_any(text, NISN_KEYWORDS):
         return []
     return [
         PIIMatch("ID_NISN", m.start(), m.end(), m.group(), 0.85)
@@ -68,7 +62,7 @@ def find_nisn(text: str) -> list[PIIMatch]:
 
 
 def find_passport(text: str) -> list[PIIMatch]:
-    if not _mentions(text, PASSPORT_KEYWORDS):
+    if not mentions_any(text, PASSPORT_KEYWORDS):
         return []
     return [
         PIIMatch("ID_PASSPORT", m.start(), m.end(), m.group(), 0.85)
@@ -78,7 +72,7 @@ def find_passport(text: str) -> list[PIIMatch]:
 
 
 def find_sim(text: str) -> list[PIIMatch]:
-    if not _mentions(text, SIM_KEYWORDS):
+    if not mentions_any(text, SIM_KEYWORDS):
         return []
     return [
         PIIMatch("ID_SIM", m.start(), m.end(), m.group(), 0.85)

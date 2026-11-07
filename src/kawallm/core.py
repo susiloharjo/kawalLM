@@ -7,6 +7,7 @@ import time
 import uuid
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from typing import Protocol, runtime_checkable
 
 from .audit import AuditLog, AuditSink, as_audit_log
 from .pii import ALL_ENTITIES, PIIMatch, detect_pii
@@ -27,11 +28,20 @@ class MaskResult:
         return bool(self.entities)
 
 
+@runtime_checkable
+class VaultBackend(Protocol):
+    """Pluggable session store interface for reversible masking (e.g. Redis-backed)."""
+
+    def token_for(self, session_id: str, entity: str, original: str) -> str: ...
+    def mapping(self, session_id: str) -> dict[str, str]: ...
+    def drop(self, session_id: str) -> None: ...
+
+
 class Vault:
     """Thread-safe, in-memory, TTL-bounded token ↔ original mapping per session.
 
     Nothing is persisted; entries expire after ``ttl`` seconds. For multi-replica
-    deployments use sticky sessions or plug in your own store with the same API.
+    deployments use sticky sessions or plug in your own :class:`VaultBackend`.
     """
 
     def __init__(self, ttl: float = 600.0, max_sessions: int = 100_000) -> None:
@@ -41,20 +51,21 @@ class Vault:
         self._lock = threading.Lock()
 
     def _purge(self, now: float) -> None:
-        expired = [k for k, (exp, _, _) in self._data.items() if exp < now]
-        for k in expired:
+        # Dict preserves insertion order and re-inserts move to the end, so the oldest
+        # expiry timestamps are always at the front (O(expired) eviction).
+        while self._data:
+            k, (exp, _, _) = next(iter(self._data.items()))
+            if exp >= now and len(self._data) <= self.max_sessions:
+                break
             del self._data[k]
-        while len(self._data) > self.max_sessions:
-            self._data.pop(next(iter(self._data)))
 
     def token_for(self, session_id: str, entity: str, original: str) -> str:
         now = time.monotonic()
         with self._lock:
-            if len(self._data) > self.max_sessions or (len(self._data) and len(self._data) % 1000 == 0):
-                self._purge(now)
-            _, fwd, rev = self._data.get(session_id, (0.0, {}, {}))
+            _, fwd, rev = self._data.pop(session_id, (0.0, {}, {}))
             token = assign_token(fwd, rev, entity, original)
             self._data[session_id] = (now + self.ttl, fwd, rev)
+            self._purge(now)
             return token
 
     def mapping(self, session_id: str) -> dict[str, str]:
@@ -83,6 +94,7 @@ class KawalLMEngine:
         redact_text: str = "[REDACTED]",
         validate_wilayah: bool = True,
         audit: AuditLog | AuditSink | None = None,
+        vault: VaultBackend | None = None,
     ) -> None:
         if mode not in MASK_MODES:
             raise ValueError(f"mode must be one of {MASK_MODES}")
@@ -97,7 +109,7 @@ class KawalLMEngine:
             threshold=threshold,
             block_categories=block_categories,
         )
-        self.vault = Vault(ttl=vault_ttl)
+        self.vault: VaultBackend = vault if vault is not None else Vault(ttl=vault_ttl)
         self.audit = as_audit_log(audit)
 
     # ---------------- safety ----------------

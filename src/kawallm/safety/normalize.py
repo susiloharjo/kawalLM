@@ -18,6 +18,7 @@ _SPACED_RE = re.compile(r"(?<![a-z0-9])(?:[a-z0-9@$][.\-_*\s]){2,}[a-z0-9@$](?![
 _SPACED_HINT = re.compile(r"(?<![a-z0-9])[a-z0-9@$][.\-_*\s][a-z0-9@$][.\-_*\s][a-z0-9@$](?![a-z0-9])")
 _REPEAT_RE = re.compile(r"([a-z])\1{2,}")
 _WS_RE = re.compile(r"[^a-z0-9]+")
+_ZW_RE = re.compile(r"[\u00ad\u200b-\u200f\u2060\ufeff]+")
 
 
 def _deleet_token(m: re.Match) -> str:
@@ -39,7 +40,8 @@ def normalize(text: str) -> str:
     if text.isascii():
         t = text.lower()
     else:
-        t = unicodedata.normalize("NFKD", text)
+        t = _ZW_RE.sub("", text)
+        t = unicodedata.normalize("NFKD", t)
         t = "".join(ch for ch in t if not unicodedata.combining(ch)).lower()
     if _SPACED_HINT.search(t):
         t = _SPACED_RE.sub(lambda m: _WS_RE.sub("", m.group()), t)
