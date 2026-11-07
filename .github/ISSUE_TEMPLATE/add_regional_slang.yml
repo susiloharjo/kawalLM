@@ -1,0 +1,35 @@
+name: 🗣️ Tambah Kamus Bahasa Daerah / Istilah
+description: Usulkan kata/frasa baru untuk kamus TOXIC_SLANG, JUDOL_PINJOL, atau SARA.
+labels: [dictionary, good first issue]
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Kategori
+      options: [TOXIC_SLANG, JUDOL_PINJOL, SARA_HATE_SPEECH]
+    validations: { required: true }
+  - type: input
+    id: language
+    attributes:
+      label: Bahasa / daerah
+      placeholder: "mis. Jawa Timur, Sunda, Batak Toba, Minang, Bugis, Betawi"
+    validations: { required: true }
+  - type: textarea
+    id: terms
+    attributes:
+      label: Daftar istilah
+      description: Satu per baris. Format `istilah | arti singkat | tingkat (kasar/sedang/ringan)`.
+    validations: { required: true }
+  - type: textarea
+    id: false_positive
+    attributes:
+      label: Potensi salah deteksi
+      description: Apakah kata ini punya arti netral dalam konteks lain (mis. "asu" = anjing di Jawa, "asem" = buah)? Ini menentukan bobotnya.
+    validations: { required: true }
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Konfirmasi
+      options:
+        - label: Saya penutur/mengerti bahasa ini atau mencantumkan sumber yang dapat diverifikasi.
+          required: true

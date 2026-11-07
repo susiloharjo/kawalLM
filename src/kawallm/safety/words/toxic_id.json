@@ -1,0 +1,267 @@
+{
+  "category": "TOXIC_SLANG",
+  "language": "id",
+  "description": "Kata kasar & umpatan umum Bahasa Indonesia (nasional/gaul).",
+  "default_weight": 1.0,
+  "contributors": [
+    "kawallm-maintainers"
+  ],
+  "terms": [
+    {
+      "term": "anjing",
+      "weight": 1.0
+    },
+    {
+      "term": "anjir",
+      "weight": 1.0
+    },
+    {
+      "term": "anjrit",
+      "weight": 1.0
+    },
+    {
+      "term": "bangsat",
+      "weight": 1.0
+    },
+    {
+      "term": "bajingan",
+      "weight": 1.0
+    },
+    {
+      "term": "brengsek",
+      "weight": 1.0
+    },
+    {
+      "term": "kampret",
+      "weight": 1.0
+    },
+    {
+      "term": "keparat",
+      "weight": 1.0
+    },
+    {
+      "term": "goblok",
+      "weight": 1.0
+    },
+    {
+      "term": "goblog",
+      "weight": 1.0
+    },
+    {
+      "term": "tolol",
+      "weight": 1.0
+    },
+    {
+      "term": "idiot",
+      "weight": 1.0
+    },
+    {
+      "term": "dungu",
+      "weight": 1.0
+    },
+    {
+      "term": "bodoh lu",
+      "weight": 1.0
+    },
+    {
+      "term": "bodoh lo",
+      "weight": 1.0
+    },
+    {
+      "term": "tai",
+      "weight": 1.0
+    },
+    {
+      "term": "taik",
+      "weight": 1.0
+    },
+    {
+      "term": "tahi",
+      "weight": 1.0
+    },
+    {
+      "term": "kontol",
+      "weight": 1.0
+    },
+    {
+      "term": "memek",
+      "weight": 1.0
+    },
+    {
+      "term": "ngentot",
+      "weight": 1.0
+    },
+    {
+      "term": "ngewe",
+      "weight": 1.0
+    },
+    {
+      "term": "jembut",
+      "weight": 1.0
+    },
+    {
+      "term": "pepek",
+      "weight": 1.0
+    },
+    {
+      "term": "pukimak",
+      "weight": 1.0
+    },
+    {
+      "term": "asu",
+      "weight": 1.0
+    },
+    {
+      "term": "babi lu",
+      "weight": 1.0
+    },
+    {
+      "term": "babi lo",
+      "weight": 1.0
+    },
+    {
+      "term": "monyet lu",
+      "weight": 1.0
+    },
+    {
+      "term": "monyet lo",
+      "weight": 1.0
+    },
+    {
+      "term": "setan lu",
+      "weight": 1.0
+    },
+    {
+      "term": "bacot",
+      "weight": 1.0
+    },
+    {
+      "term": "bacod",
+      "weight": 1.0
+    },
+    {
+      "term": "cocot",
+      "weight": 1.0
+    },
+    {
+      "term": "lonte",
+      "weight": 1.0
+    },
+    {
+      "term": "pelacur",
+      "weight": 1.0
+    },
+    {
+      "term": "perek",
+      "weight": 1.0
+    },
+    {
+      "term": "sundal",
+      "weight": 1.0
+    },
+    {
+      "term": "bencong",
+      "weight": 1.0
+    },
+    {
+      "term": "banci lo",
+      "weight": 1.0
+    },
+    {
+      "term": "maho",
+      "weight": 1.0
+    },
+    {
+      "term": "titit",
+      "weight": 1.0
+    },
+    {
+      "term": "peler",
+      "weight": 1.0
+    },
+    {
+      "term": "kunyuk",
+      "weight": 1.0
+    },
+    {
+      "term": "keparat lu",
+      "weight": 1.0
+    },
+    {
+      "term": "laknat",
+      "weight": 1.0
+    },
+    {
+      "term": "jancok",
+      "weight": 1.0
+    },
+    {
+      "term": "cok",
+      "weight": 1.0
+    },
+    {
+      "term": "mampus",
+      "weight": 1.0
+    },
+    {
+      "term": "modar",
+      "weight": 1.0
+    },
+    {
+      "term": "geblek",
+      "weight": 1.0
+    },
+    {
+      "term": "budeg",
+      "weight": 1.0
+    },
+    {
+      "term": "bloon",
+      "weight": 1.0
+    },
+    {
+      "term": "cupu lo",
+      "weight": 1.0
+    },
+    {
+      "term": "tengik",
+      "weight": 1.0
+    },
+    {
+      "term": "kurang ajar",
+      "weight": 1.0
+    },
+    {
+      "term": "ngehe",
+      "weight": 1.0
+    },
+    {
+      "term": "kimak",
+      "weight": 1.0
+    },
+    {
+      "term": "pantek",
+      "weight": 1.0
+    },
+    {
+      "term": "anjay",
+      "weight": 0.5
+    },
+    {
+      "term": "sialan",
+      "weight": 0.5
+    },
+    {
+      "term": "bodoh",
+      "weight": 0.5
+    },
+    {
+      "term": "bego",
+      "weight": 0.5
+    },
+    {
+      "term": "oon",
+      "weight": 0.5
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+name: ✨ Usulan Fitur
+description: Usulkan detektor PII baru, integrasi, atau peningkatan.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Masalah yang ingin diselesaikan
+    validations: { required: true }
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Usulan solusi
+      description: Untuk identitas baru (mis. NIP, NISN, Paspor, SIM), sertakan struktur nomor + sumber resmi format.
+  - type: textarea
+    id: refs
+    attributes:
+      label: Referensi (regulasi, dokumentasi resmi)

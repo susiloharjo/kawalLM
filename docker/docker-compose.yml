@@ -1,0 +1,14 @@
+services:
+  litellm-kawallm:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: kawallm/litellm-kawallm:latest
+    ports:
+      - "4000:4000"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-change-me}
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml:ro
+    restart: unless-stopped

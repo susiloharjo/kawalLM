@@ -1,0 +1,96 @@
+{
+  "category": "TOXIC_SLANG",
+  "language": "id",
+  "description": "Umpatan Bahasa Jawa (Jawa Timur, Jawa Tengah, DIY). Perlu verifikasi komunitas.",
+  "default_weight": 1.0,
+  "contributors": [
+    "kawallm-maintainers"
+  ],
+  "terms": [
+    {
+      "term": "jancuk"
+    },
+    {
+      "term": "jancok"
+    },
+    {
+      "term": "diancuk"
+    },
+    {
+      "term": "dancuk"
+    },
+    {
+      "term": "cuk"
+    },
+    {
+      "term": "asu"
+    },
+    {
+      "term": "asu kowe"
+    },
+    {
+      "term": "bajingan"
+    },
+    {
+      "term": "ndasmu"
+    },
+    {
+      "term": "matamu"
+    },
+    {
+      "term": "raimu"
+    },
+    {
+      "term": "celeng"
+    },
+    {
+      "term": "kirik"
+    },
+    {
+      "term": "gathel"
+    },
+    {
+      "term": "jembut"
+    },
+    {
+      "term": "taek"
+    },
+    {
+      "term": "taek kucing"
+    },
+    {
+      "term": "silit"
+    },
+    {
+      "term": "pekok"
+    },
+    {
+      "term": "goblok kowe"
+    },
+    {
+      "term": "utekmu"
+    },
+    {
+      "term": "cangkemmu"
+    },
+    {
+      "term": "lambemu"
+    },
+    {
+      "term": "wedhus"
+    },
+    {
+      "term": "kakekane"
+    },
+    {
+      "term": "mbahmu"
+    },
+    {
+      "term": "bajindul"
+    },
+    {
+      "term": "asem",
+      "weight": 0.5
+    }
+  ]
+}

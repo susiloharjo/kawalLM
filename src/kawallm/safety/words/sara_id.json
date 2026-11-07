@@ -1,0 +1,133 @@
+{
+  "category": "SARA_HATE_SPEECH",
+  "language": "id",
+  "description": "Slur & frasa ujaran kebencian berbasis SARA. Pola hasutan (bunuh/usir/basmi + kelompok) ditangani di safety/rules.py.",
+  "default_weight": 1.0,
+  "contributors": [
+    "kawallm-maintainers"
+  ],
+  "terms": [
+    {
+      "term": "cina babi"
+    },
+    {
+      "term": "china babi"
+    },
+    {
+      "term": "cina kafir"
+    },
+    {
+      "term": "aseng antek"
+    },
+    {
+      "term": "antek aseng"
+    },
+    {
+      "term": "antek asing"
+    },
+    {
+      "term": "kafir harbi"
+    },
+    {
+      "term": "kafir laknat"
+    },
+    {
+      "term": "kafir anjing"
+    },
+    {
+      "term": "kampret kadrun"
+    },
+    {
+      "term": "onta arab"
+    },
+    {
+      "term": "ontaarab"
+    },
+    {
+      "term": "pki laknat"
+    },
+    {
+      "term": "dasar pribumi malas"
+    },
+    {
+      "term": "pribumi tolol"
+    },
+    {
+      "term": "dasar cina"
+    },
+    {
+      "term": "dasar batak"
+    },
+    {
+      "term": "dasar jawa"
+    },
+    {
+      "term": "dasar padang pelit"
+    },
+    {
+      "term": "dasar madura"
+    },
+    {
+      "term": "dasar ambon"
+    },
+    {
+      "term": "dasar papua"
+    },
+    {
+      "term": "monyet papua"
+    },
+    {
+      "term": "papua monyet"
+    },
+    {
+      "term": "negro"
+    },
+    {
+      "term": "teroris islam"
+    },
+    {
+      "term": "islam radikal semua"
+    },
+    {
+      "term": "kristen kafir"
+    },
+    {
+      "term": "yahudi laknat"
+    },
+    {
+      "term": "syiah kafir"
+    },
+    {
+      "term": "ahmadiyah sesat bunuh"
+    },
+    {
+      "term": "bangsa babi"
+    },
+    {
+      "term": "ras rendahan"
+    },
+    {
+      "term": "ras rendah"
+    },
+    {
+      "term": "kafir",
+      "weight": 0.5
+    },
+    {
+      "term": "aseng",
+      "weight": 0.5
+    },
+    {
+      "term": "cebong",
+      "weight": 0.5
+    },
+    {
+      "term": "kadrun",
+      "weight": 0.5
+    },
+    {
+      "term": "sesat",
+      "weight": 0.5
+    }
+  ]
+}

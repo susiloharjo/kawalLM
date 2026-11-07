@@ -1,0 +1,44 @@
+{
+  "category": "TOXIC_SLANG",
+  "language": "id",
+  "description": "Umpatan Batak/Medan. Perlu verifikasi komunitas.",
+  "default_weight": 1.0,
+  "contributors": [
+    "kawallm-maintainers"
+  ],
+  "terms": [
+    {
+      "term": "bodat"
+    },
+    {
+      "term": "pukimak"
+    },
+    {
+      "term": "puki mak"
+    },
+    {
+      "term": "pukimai"
+    },
+    {
+      "term": "kimak"
+    },
+    {
+      "term": "lancau"
+    },
+    {
+      "term": "bujang inam"
+    },
+    {
+      "term": "babi kau"
+    },
+    {
+      "term": "anjing kau"
+    },
+    {
+      "term": "tai kau"
+    },
+    {
+      "term": "pantek"
+    }
+  ]
+}

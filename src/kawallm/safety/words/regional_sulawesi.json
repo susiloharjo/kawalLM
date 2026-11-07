@@ -1,0 +1,35 @@
+{
+  "category": "TOXIC_SLANG",
+  "language": "id",
+  "description": "Umpatan Makassar/Bugis/Manado. Perlu verifikasi komunitas.",
+  "default_weight": 1.0,
+  "contributors": [
+    "kawallm-maintainers"
+  ],
+  "terms": [
+    {
+      "term": "sundala"
+    },
+    {
+      "term": "telaso"
+    },
+    {
+      "term": "tailaso"
+    },
+    {
+      "term": "pongoro"
+    },
+    {
+      "term": "puki"
+    },
+    {
+      "term": "cuki"
+    },
+    {
+      "term": "cukimai"
+    },
+    {
+      "term": "sontoloyo"
+    }
+  ]
+}

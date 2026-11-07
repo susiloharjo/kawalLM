@@ -1,0 +1,495 @@
+{
+  "category": "JUDOL_PINJOL",
+  "language": "id",
+  "description": "Promosi judi online/slot/togel & pinjol ilegal. Weight 1.0 = sinyal promosi kuat; 0.5/0.3 = sinyal lemah yang baru memblokir bila terkumpul bersama sinyal lain (skor kategori >= threshold).",
+  "default_weight": 1.0,
+  "contributors": [
+    "kawallm-maintainers"
+  ],
+  "terms": [
+    {
+      "term": "slot gacor",
+      "weight": 1.0
+    },
+    {
+      "term": "situs gacor",
+      "weight": 1.0
+    },
+    {
+      "term": "gacor hari ini",
+      "weight": 1.0
+    },
+    {
+      "term": "pola gacor",
+      "weight": 1.0
+    },
+    {
+      "term": "jam gacor",
+      "weight": 1.0
+    },
+    {
+      "term": "link gacor",
+      "weight": 1.0
+    },
+    {
+      "term": "depo pulsa",
+      "weight": 1.0
+    },
+    {
+      "term": "deposit pulsa",
+      "weight": 1.0
+    },
+    {
+      "term": "depo dana",
+      "weight": 1.0
+    },
+    {
+      "term": "depo ovo",
+      "weight": 1.0
+    },
+    {
+      "term": "depo gopay",
+      "weight": 1.0
+    },
+    {
+      "term": "maxwin",
+      "weight": 1.0
+    },
+    {
+      "term": "max win",
+      "weight": 1.0
+    },
+    {
+      "term": "anti rungkad",
+      "weight": 1.0
+    },
+    {
+      "term": "bocoran rtp",
+      "weight": 1.0
+    },
+    {
+      "term": "link rtp",
+      "weight": 1.0
+    },
+    {
+      "term": "rtp live",
+      "weight": 1.0
+    },
+    {
+      "term": "rtp slot",
+      "weight": 1.0
+    },
+    {
+      "term": "info rtp",
+      "weight": 1.0
+    },
+    {
+      "term": "slot88",
+      "weight": 1.0
+    },
+    {
+      "term": "slot777",
+      "weight": 1.0
+    },
+    {
+      "term": "slot online",
+      "weight": 1.0
+    },
+    {
+      "term": "situs slot",
+      "weight": 1.0
+    },
+    {
+      "term": "daftar slot",
+      "weight": 1.0
+    },
+    {
+      "term": "bandar slot",
+      "weight": 1.0
+    },
+    {
+      "term": "bandar togel",
+      "weight": 1.0
+    },
+    {
+      "term": "bandar bola",
+      "weight": 1.0
+    },
+    {
+      "term": "togel online",
+      "weight": 1.0
+    },
+    {
+      "term": "prediksi togel",
+      "weight": 1.0
+    },
+    {
+      "term": "bocoran togel",
+      "weight": 1.0
+    },
+    {
+      "term": "angka main",
+      "weight": 1.0
+    },
+    {
+      "term": "link alternatif",
+      "weight": 1.0
+    },
+    {
+      "term": "akun pro",
+      "weight": 1.0
+    },
+    {
+      "term": "akun demo slot",
+      "weight": 1.0
+    },
+    {
+      "term": "scatter hitam",
+      "weight": 1.0
+    },
+    {
+      "term": "mahjong ways",
+      "weight": 1.0
+    },
+    {
+      "term": "gates of olympus",
+      "weight": 1.0
+    },
+    {
+      "term": "sweet bonanza",
+      "weight": 1.0
+    },
+    {
+      "term": "starlight princess",
+      "weight": 1.0
+    },
+    {
+      "term": "bonus new member",
+      "weight": 1.0
+    },
+    {
+      "term": "new member 100",
+      "weight": 1.0
+    },
+    {
+      "term": "freebet",
+      "weight": 1.0
+    },
+    {
+      "term": "free bet",
+      "weight": 1.0
+    },
+    {
+      "term": "freechip",
+      "weight": 1.0
+    },
+    {
+      "term": "spin gratis",
+      "weight": 1.0
+    },
+    {
+      "term": "withdraw cepat",
+      "weight": 1.0
+    },
+    {
+      "term": "wd cepat",
+      "weight": 1.0
+    },
+    {
+      "term": "garansi kekalahan",
+      "weight": 1.0
+    },
+    {
+      "term": "cashback kekalahan",
+      "weight": 1.0
+    },
+    {
+      "term": "x500",
+      "weight": 1.0
+    },
+    {
+      "term": "x1000",
+      "weight": 1.0
+    },
+    {
+      "term": "jackpot paus",
+      "weight": 1.0
+    },
+    {
+      "term": "jp paus",
+      "weight": 1.0
+    },
+    {
+      "term": "sbobet",
+      "weight": 1.0
+    },
+    {
+      "term": "judi bola",
+      "weight": 1.0
+    },
+    {
+      "term": "judi slot",
+      "weight": 1.0
+    },
+    {
+      "term": "casino online",
+      "weight": 1.0
+    },
+    {
+      "term": "kasino online",
+      "weight": 1.0
+    },
+    {
+      "term": "sabung ayam online",
+      "weight": 1.0
+    },
+    {
+      "term": "toto macau",
+      "weight": 1.0
+    },
+    {
+      "term": "toto 4d",
+      "weight": 1.0
+    },
+    {
+      "term": "4d 3d 2d",
+      "weight": 1.0
+    },
+    {
+      "term": "colok bebas",
+      "weight": 1.0
+    },
+    {
+      "term": "parlay",
+      "weight": 1.0
+    },
+    {
+      "term": "mix parlay",
+      "weight": 1.0
+    },
+    {
+      "term": "pragmatic play",
+      "weight": 1.0
+    },
+    {
+      "term": "pg soft",
+      "weight": 1.0
+    },
+    {
+      "term": "gacor",
+      "weight": 1.0
+    },
+    {
+      "term": "pinjaman cepat cair",
+      "weight": 1.0
+    },
+    {
+      "term": "langsung cair",
+      "weight": 1.0
+    },
+    {
+      "term": "cair dalam 5 menit",
+      "weight": 1.0
+    },
+    {
+      "term": "cair 5 menit",
+      "weight": 1.0
+    },
+    {
+      "term": "cair hitungan menit",
+      "weight": 1.0
+    },
+    {
+      "term": "tanpa bi checking",
+      "weight": 1.0
+    },
+    {
+      "term": "tanpa slik",
+      "weight": 1.0
+    },
+    {
+      "term": "tanpa jaminan langsung cair",
+      "weight": 1.0
+    },
+    {
+      "term": "pinjaman tanpa jaminan",
+      "weight": 1.0
+    },
+    {
+      "term": "pinjol tanpa ktp",
+      "weight": 1.0
+    },
+    {
+      "term": "tanpa ktp",
+      "weight": 1.0
+    },
+    {
+      "term": "acc tanpa survey",
+      "weight": 1.0
+    },
+    {
+      "term": "pasti acc",
+      "weight": 1.0
+    },
+    {
+      "term": "pasti di acc",
+      "weight": 1.0
+    },
+    {
+      "term": "limit langsung cair",
+      "weight": 1.0
+    },
+    {
+      "term": "bunga 0 persen",
+      "weight": 1.0
+    },
+    {
+      "term": "pinjol legal tanpa ojk",
+      "weight": 1.0
+    },
+    {
+      "term": "pinjol tanpa ojk",
+      "weight": 1.0
+    },
+    {
+      "term": "pinjaman online cepat",
+      "weight": 1.0
+    },
+    {
+      "term": "dana cepat cair",
+      "weight": 1.0
+    },
+    {
+      "term": "pinjol cepat cair",
+      "weight": 1.0
+    },
+    {
+      "term": "joki pinjol",
+      "weight": 1.0
+    },
+    {
+      "term": "galbay",
+      "weight": 1.0
+    },
+    {
+      "term": "gagal bayar aman",
+      "weight": 1.0
+    },
+    {
+      "term": "zeus",
+      "weight": 0.3
+    },
+    {
+      "term": "olympus",
+      "weight": 0.3
+    },
+    {
+      "term": "rtp",
+      "weight": 0.3
+    },
+    {
+      "term": "scatter",
+      "weight": 0.3
+    },
+    {
+      "term": "togel",
+      "weight": 0.5
+    },
+    {
+      "term": "toto",
+      "weight": 0.5
+    },
+    {
+      "term": "jackpot",
+      "weight": 0.3
+    },
+    {
+      "term": "jp",
+      "weight": 0.3
+    },
+    {
+      "term": "wd",
+      "weight": 0.3
+    },
+    {
+      "term": "depo",
+      "weight": 0.3
+    },
+    {
+      "term": "deposit",
+      "weight": 0.3
+    },
+    {
+      "term": "slot",
+      "weight": 0.5
+    },
+    {
+      "term": "judi online",
+      "weight": 0.5
+    },
+    {
+      "term": "judol",
+      "weight": 0.5
+    },
+    {
+      "term": "bonus",
+      "weight": 0.3
+    },
+    {
+      "term": "cuan",
+      "weight": 0.3
+    },
+    {
+      "term": "menang besar",
+      "weight": 0.3
+    },
+    {
+      "term": "pasti menang",
+      "weight": 0.5
+    },
+    {
+      "term": "modal receh",
+      "weight": 0.3
+    },
+    {
+      "term": "receh",
+      "weight": 0.3
+    },
+    {
+      "term": "pinjol",
+      "weight": 0.5
+    },
+    {
+      "term": "pinjaman online",
+      "weight": 0.5
+    },
+    {
+      "term": "tanpa jaminan",
+      "weight": 0.3
+    },
+    {
+      "term": "cepat cair",
+      "weight": 0.3
+    },
+    {
+      "term": "hubungi wa",
+      "weight": 0.3
+    },
+    {
+      "term": "wa admin",
+      "weight": 0.3
+    },
+    {
+      "term": "chat admin",
+      "weight": 0.3
+    },
+    {
+      "term": "klik link",
+      "weight": 0.3
+    },
+    {
+      "term": "link di bio",
+      "weight": 0.3
+    }
+  ]
+}

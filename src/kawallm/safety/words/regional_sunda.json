@@ -1,0 +1,53 @@
+{
+  "category": "TOXIC_SLANG",
+  "language": "id",
+  "description": "Umpatan Bahasa Sunda. Perlu verifikasi komunitas.",
+  "default_weight": 1.0,
+  "contributors": [
+    "kawallm-maintainers"
+  ],
+  "terms": [
+    {
+      "term": "goblog"
+    },
+    {
+      "term": "belegug"
+    },
+    {
+      "term": "kehed"
+    },
+    {
+      "term": "sia goblog"
+    },
+    {
+      "term": "anjing sia"
+    },
+    {
+      "term": "koplok"
+    },
+    {
+      "term": "bangkawarah"
+    },
+    {
+      "term": "gelo sia"
+    },
+    {
+      "term": "ewe"
+    },
+    {
+      "term": "sapi sia"
+    },
+    {
+      "term": "ngewe"
+    },
+    {
+      "term": "bedul"
+    },
+    {
+      "term": "tai sia"
+    },
+    {
+      "term": "teu boga utek"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+name: 🐛 Laporan Bug
+description: Ada yang salah deteksi, crash, atau perilaku tidak sesuai.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ **JANGAN tempel data pribadi asli** (NIK, NPWP, no. HP, rekening orang sungguhan).
+        Gunakan data sintetis: `python -c "from kawallm import synthetic; print(synthetic.nik(1))"`.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [PII - false positive, PII - false negative, Safety - false positive, Safety - false negative, LiteLLM integration, Presidio integration, FastAPI middleware, Docker, Lainnya]
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes:
+      label: Cara reproduksi
+      description: Input (data sintetis), konfigurasi, dan kode minimal.
+      render: python
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes:
+      label: Hasil yang diharapkan vs aktual
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes:
+      label: Versi kawallm / Python / LiteLLM

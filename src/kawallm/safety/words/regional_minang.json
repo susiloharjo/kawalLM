@@ -1,0 +1,41 @@
+{
+  "category": "TOXIC_SLANG",
+  "language": "id",
+  "description": "Umpatan Minang. Perlu verifikasi komunitas.",
+  "default_weight": 1.0,
+  "contributors": [
+    "kawallm-maintainers"
+  ],
+  "terms": [
+    {
+      "term": "pantek"
+    },
+    {
+      "term": "kanciang"
+    },
+    {
+      "term": "kalera"
+    },
+    {
+      "term": "ciluah"
+    },
+    {
+      "term": "cirik"
+    },
+    {
+      "term": "antah"
+    },
+    {
+      "term": "puki"
+    },
+    {
+      "term": "kapalo bana"
+    },
+    {
+      "term": "matilah ang"
+    },
+    {
+      "term": "kalera ang"
+    }
+  ]
+}
