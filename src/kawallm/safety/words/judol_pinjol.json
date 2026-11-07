@@ -88,10 +88,6 @@
       "weight": 1.0
     },
     {
-      "term": "slot777",
-      "weight": 1.0
-    },
-    {
       "term": "slot online",
       "weight": 1.0
     },
@@ -277,7 +273,7 @@
     },
     {
       "term": "gacor",
-      "weight": 1.0
+      "weight": 0.5
     },
     {
       "term": "pinjaman cepat cair",

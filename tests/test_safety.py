@@ -101,3 +101,24 @@ def test_dictionaries_well_formed():
         assert d["terms"], name
         terms = [t if isinstance(t, str) else t["term"] for t in d["terms"]]
         assert len(terms) == len(set(terms)), f"duplicate in {name}"
+
+
+def test_no_dictionary_term_collapses_under_normalisation():
+    """Terms go through the same normaliser as input, so a leet-looking term can silently turn into a
+    common word (``slot777`` -> ``slot``) and block every message containing it."""
+    import glob
+    import json
+    from importlib import resources
+
+    folder = resources.files("kawallm.safety").joinpath("words")
+    for path in sorted(glob.glob(str(folder / "*.json"))):
+        for t in json.load(open(path, encoding="utf-8"))["terms"]:
+            term = t if isinstance(t, str) else t["term"]
+            assert normalize(term).strip() == term.lower().strip(), f"{path}: {term!r} is altered by normalize()"
+
+
+def test_ambiguous_slang_alone_is_not_blocked(scanner):
+    for text in ("Kita perlu menambah slot pelatihan", "Gacor adalah istilah slang untuk hal yang bagus", "zeus"):
+        assert scanner.scan(text).safe, text
+    assert not scanner.scan("slot gacor hari ini").safe
+    assert not scanner.scan("s.l.o.t g4c0r").safe  # two ambiguous signals together still block
