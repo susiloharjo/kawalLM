@@ -4,6 +4,9 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikut
 
 ## [Unreleased]
 
+### Added
+- LiteLLM `pre_call`: PII di argumen `tool_calls` / `function_call` pada request kini dimaskir (JSON tetap valid, angka telanjang menjadi string token). Safety scan atas argumen mengikuti `scan_roles`.
+
 ### Changed
 - Versi paket sekarang satu sumber (`src/kawallm/__init__.py`).
 - Paket menyertakan `py.typed` (PEP 561).

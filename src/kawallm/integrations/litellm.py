@@ -15,7 +15,8 @@ config.yaml::
 
 Behaviour
   pre_call  : safety scan on user messages (block -> HTTP 400), PII masking on
-              every message (all roles, str or multimodal text parts).
+              every message (all roles, str or multimodal text parts, and the JSON
+              arguments of assistant ``tool_calls`` / ``function_call``).
   post_call : mask PII the model produced (output leakage), then, in reversible
               mode with ``restore_output``, put the caller's own values back.
   streaming : same, using a small hold-back buffer so a value split across
@@ -24,6 +25,7 @@ Behaviour
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
@@ -114,6 +116,37 @@ class KawalLMGuardrail(CustomGuardrail):
                 },
             )
 
+    def _mask_json_value(self, value: Any, sid: str | None, scan: bool) -> Any:
+        """Mask (and optionally safety-scan) every string/int leaf of a parsed JSON value."""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str | int):
+            text = str(value)
+            if scan and isinstance(value, str):
+                self._check(text)
+            masked = self.engine.mask_pii(text, sid)
+            return value if masked == text else masked
+        if isinstance(value, list):
+            return [self._mask_json_value(v, sid, scan) for v in value]
+        if isinstance(value, dict):
+            return {k: self._mask_json_value(v, sid, scan) for k, v in value.items()}
+        return value
+
+    def _mask_arguments(self, args: str, sid: str | None, scan: bool) -> str:
+        """Tool-call arguments are a JSON string; mask leaves so the result stays valid JSON.
+
+        A bare number such as ``{"nik": 3171011501900001}`` becomes the string ``"<ID_NIK>"``.
+        Arguments that are not valid JSON fall back to plain text masking.
+        """
+        try:
+            parsed = json.loads(args)
+        except ValueError:
+            if scan:
+                self._check(args)
+            return self.engine.mask_pii(args, sid)
+        masked = self._mask_json_value(parsed, sid, scan)
+        return args if masked == parsed else json.dumps(masked, ensure_ascii=False)
+
     def _process_output(self, text: str, sid: str | None) -> str:
         if self.mask_output:
             # Output-leakage protection. Always plain tokens here: new PII produced by the
@@ -139,15 +172,23 @@ class KawalLMGuardrail(CustomGuardrail):
             if not isinstance(msg, dict):
                 continue
             role = msg.get("role", "user")
+            scan = role in self.scan_roles
+            for call in msg.get("tool_calls") or []:
+                fn = call.get("function") if isinstance(call, dict) else None
+                if isinstance(fn, dict) and isinstance(fn.get("arguments"), str):
+                    fn["arguments"] = self._mask_arguments(fn["arguments"], sid, scan)
+            legacy = msg.get("function_call")  # deprecated OpenAI field, still sent by some clients
+            if isinstance(legacy, dict) and isinstance(legacy.get("arguments"), str):
+                legacy["arguments"] = self._mask_arguments(legacy["arguments"], sid, scan)
             content = msg.get("content")
             if isinstance(content, str):
-                if role in self.scan_roles:
+                if scan:
                     self._check(content)
                 msg["content"] = self.engine.mask_pii(content, sid)
             elif isinstance(content, list):
                 for part in content:
                     if isinstance(part, dict) and part.get("type") == "text" and isinstance(part.get("text"), str):
-                        if role in self.scan_roles:
+                        if scan:
                             self._check(part["text"])
                         part["text"] = self.engine.mask_pii(part["text"], sid)
         return data

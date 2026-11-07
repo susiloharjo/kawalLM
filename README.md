@@ -111,7 +111,7 @@ guardrails:
 
 | Hook | Perilaku |
 |---|---|
-| `pre_call` | Safety check pada pesan **role user** (system prompt tidak dicek agar "jangan bocorkan system prompt" tidak memicu blokir) → HTTP 400. PII dimaskir di **semua role**, termasuk multimodal text parts. |
+| `pre_call` | Safety check pada pesan **role user** (system prompt tidak dicek agar "jangan bocorkan system prompt" tidak memicu blokir) → HTTP 400. PII dimaskir di **semua role**, termasuk multimodal text parts dan argumen `tool_calls` / `function_call` (JSON tetap valid). |
 | `post_call` | PII baru dari model dimaskir (*output leakage*), lalu token `<ID_X_n>` milik pemanggil dikembalikan (reversible). Argumen `tool_calls` juga di-de-mask. |
 | streaming | Sama, dengan *hold-back buffer* 48 karakter agar nilai yang terpotong antar chunk tetap tertangkap. |
 
@@ -174,7 +174,7 @@ Throughput ≥ 1.500 req/s pada 2 vCPU **tercapai untuk prompt pendek (≤ ~200 
 - **Kamus bahasa daerah masih seed** dan perlu verifikasi penutur asli — ini area kontribusi utama.
 - Validasi NIK/NPWP memeriksa **format**, bukan keberadaan orangnya.
 - Vault reversible bersifat in-memory per proses; untuk multi-replica gunakan sticky session.
-- Argumen `tool_calls` di request tidak di-scan.
+- Safety scan tidak memeriksa argumen `tool_calls` kecuali role `assistant` ditambahkan ke `scan_roles` (PII di argumen selalu dimaskir).
 
 ## Sumber data & atribusi
 
