@@ -15,17 +15,13 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikut
 - `StreamDeanonymizer` (+ `KawalLM.deanonymize_stream`, `KawalLMEngine.unmask_stream`): pemulihan placeholder untuk respons streaming di luar LiteLLM.
 - Protokol `VaultBackend` (`KawalLMEngine(..., vault=...)`) untuk session store kustom (mis. Redis) serta eviksi sesi `Vault` in-memory `O(1)` amortized berbasis urutan kedaluwarsa.
 - Dukungan `audit=` di `KawalLMMiddleware` (FastAPI), `EMAIL` & `validate_wilayah` di `KawalLMRecognizer` (Presidio), serta de-masking `delta.tool_calls` pada streaming LiteLLM.
+- Audit log (`kawallm.audit`): `AuditLog`, `AuditEvent`, `logging_sink`, `JsonlFileSink`. Event berisi aksi, jumlah kemunculan per entitas, dan kategori pelanggaran, tanpa nilai PII, teks, atau isi vault. `KawalLM(audit=...)` + `scan(..., context=...)`; guardrail LiteLLM: `audit_log`, `audit_file`, `audit_include_clean`, `audit_include_user`. Sink yang gagal tidak menggagalkan request.
+- Detektor identitas baru: `ID_NIP` (18 digit, divalidasi tanggal lahir, bulan pengangkatan, gender), `ID_NISN`, `ID_PASSPORT`, `ID_SIM` (ketiganya wajib kata kunci di dekat nomor). Termasuk generator `kawallm.synthetic.nip/nisn/passport/sim` dan dukungan Presidio.
 
 ### Fixed
 - Evasion menggunakan karakter *zero-width* (`\u200b`, `\u200c`, `\u200d`, `\ufeff`, `\u00ad`) kini dihapus saat normalisasi safety.
 - Detektor rekening bank tidak lagi mencocokkan angka yang mencampur separator berbeda (mis. tanggal dan jam `2026-11-07 20.45` di dekat kata `transfer`).
 - Buffer streaming LiteLLM kini memiliki batas fallback aman untuk teks panjang tanpa spasi (URL panjang, base64, JSON rapat).
-
-### Added
-- Audit log (`kawallm.audit`): `AuditLog`, `AuditEvent`, `logging_sink`, `JsonlFileSink`. Event berisi aksi, jumlah kemunculan per entitas, dan kategori pelanggaran, tanpa nilai PII, teks, atau isi vault. `KawalLM(audit=...)` + `scan(..., context=...)`; guardrail LiteLLM: `audit_log`, `audit_file`, `audit_include_clean`, `audit_include_user`. Sink yang gagal tidak menggagalkan request.
-
-### Added
-- Detektor identitas baru: `ID_NIP` (18 digit, divalidasi tanggal lahir, bulan pengangkatan, gender), `ID_NISN`, `ID_PASSPORT`, `ID_SIM` (ketiganya wajib kata kunci di dekat nomor). Termasuk generator `kawallm.synthetic.nip/nisn/passport/sim` dan dukungan Presidio.
 
 ## [0.1.1] - 2026-11-07
 
