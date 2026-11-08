@@ -1,6 +1,6 @@
 # KawalLM 🇮🇩
 
-[![PyPI](https://img.shields.io/pypi/v/kawallm.svg)](https://pypi.org/project/kawallm/)
+[![PyPI](https://img.shields.io/pypi/v/kawallm.svg?v=0.2.3)](https://pypi.org/project/kawallm/)
 [![Python](https://img.shields.io/pypi/pyversions/kawallm.svg)](https://pypi.org/project/kawallm/)
 [![CI](https://github.com/susiloharjo/kawalLM/actions/workflows/ci.yml/badge.svg)](https://github.com/susiloharjo/kawalLM/actions/workflows/ci.yml)
 [![License](https://img.shields.io/pypi/l/kawallm.svg)](LICENSE)
