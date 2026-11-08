@@ -34,6 +34,7 @@ import time
 import uuid
 from collections import Counter
 from dataclasses import replace
+from decimal import Decimal
 from typing import Any
 
 from fastapi import HTTPException
@@ -168,14 +169,20 @@ class KawalLMGuardrail(CustomGuardrail):
             )
 
     def _mask_text(
-        self, text: str, sid: str | None, counts: Counter | None, mode: str | None = None, context: str = ""
+        self,
+        text: str,
+        sid: str | None,
+        counts: Counter | None,
+        mode: str | None = None,
+        context: str = "",
+        after: str = "",
     ) -> str:
         """Mask ``text`` and add the entity types found to ``counts`` (used only for the audit trail).
 
         ``context`` precedes ``text`` (a JSON field name, the previous stream chunk): detectors that depend on a
         nearby keyword see it, but it is not part of the result.
         """
-        res = self.engine.mask(text, sid, mode, context)
+        res = self.engine.mask(text, sid, mode, context, after)
         if counts is not None:
             counts.update(m.entity for m in res.entities)
         return res.text
@@ -264,15 +271,25 @@ class KawalLMGuardrail(CustomGuardrail):
                 self._check(text)
             masked = self._mask_text(text, sid, counts, mode, hint)
             return value if masked == text else masked
+        if isinstance(value, Decimal):  # a JSON float, parsed without losing digits: 3171011501900001.0
+            text = format(value.to_integral_value() if value == value.to_integral_value() else value, "f")
+            masked = self._mask_text(text, sid, counts, mode, hint)
+            return value if masked == text else masked
         if isinstance(value, list | dict) and depth >= _MAX_JSON_DEPTH:
             raise HTTPException(status_code=400, detail="[KawalLM] Argumen tool_call terlalu dalam (JSON).")
         if isinstance(value, list):
             return [self._mask_json_value(v, sid, scan, counts, mode, hint, depth + 1) for v in value]
         if isinstance(value, dict):
-            return {
-                k: self._mask_json_value(v, sid, scan, counts, mode, f"{k} " if isinstance(k, str) else hint, depth + 1)
-                for k, v in value.items()
-            }
+            out: dict = {}
+            for k, v in value.items():
+                # A key can carry PII too ({"3171011501900001": ...}); it is masked like any value.
+                key = self._mask_text(k, sid, counts, mode) if isinstance(k, str) else k
+                while key in out:  # two keys can mask to the same token: keep both values
+                    key = f"{key}#"
+                out[key] = self._mask_json_value(
+                    v, sid, scan, counts, mode, f"{k} " if isinstance(k, str) else hint, depth + 1
+                )
+            return out
         return value
 
     def _mask_arguments(
@@ -286,7 +303,7 @@ class KawalLMGuardrail(CustomGuardrail):
         if len(args) > _MAX_TOOL_ARGUMENT_CHARS:
             raise HTTPException(status_code=400, detail="[KawalLM] Argumen tool_call terlalu besar.")
         try:
-            parsed = json.loads(args)
+            parsed = json.loads(args, parse_float=Decimal)
         except RecursionError:
             raise HTTPException(status_code=400, detail="[KawalLM] Argumen tool_call terlalu dalam (JSON).") from None
         except ValueError:
@@ -294,7 +311,7 @@ class KawalLMGuardrail(CustomGuardrail):
                 self._check(args)
             return self._mask_text(args, sid, counts, mode)
         masked = self._mask_json_value(parsed, sid, scan, counts, mode)
-        return args if masked == parsed else json.dumps(masked, ensure_ascii=False)
+        return args if masked == parsed else json.dumps(masked, ensure_ascii=False, default=_json_default)
 
     @property
     def _output_mode(self) -> str:
@@ -304,10 +321,12 @@ class KawalLMGuardrail(CustomGuardrail):
     def _restores(self, sid: str | None) -> bool:
         return bool(sid) and self.restore_output and self.engine.reversible_enabled
 
-    def _process_output(self, text: str, sid: str | None, counts: Counter | None = None, context: str = "") -> str:
+    def _process_output(
+        self, text: str, sid: str | None, counts: Counter | None = None, context: str = "", after: str = ""
+    ) -> str:
         if self.mask_output:
             # Output-leakage protection. New PII produced by the model is not the caller's to restore.
-            text = self._mask_text(text, None, counts, self._output_mode, context)
+            text = self._mask_text(text, None, counts, self._output_mode, context, after)
         if self._restores(sid):
             text = self.engine.unmask(text, sid)
         return text
@@ -447,8 +466,18 @@ class KawalLMGuardrail(CustomGuardrail):
             message = getattr(choice, "message", None)
             if message is None:
                 continue
-            if isinstance(getattr(message, "content", None), str):
-                message.content = self._process_output(message.content, sid, counts)
+            for field in _TEXT_FIELDS:
+                value = getattr(message, field, None)
+                if isinstance(value, str):
+                    setattr(message, field, self._process_output(value, sid, counts))
+            for block in getattr(message, "thinking_blocks", None) or []:
+                text = block.get("thinking") if isinstance(block, dict) else getattr(block, "thinking", None)
+                if isinstance(text, str):
+                    cleaned = self._process_output(text, sid, counts)
+                    if isinstance(block, dict):
+                        block["thinking"] = cleaned
+                    else:
+                        block.thinking = cleaned
             calls = [getattr(tc, "function", None) for tc in getattr(message, "tool_calls", None) or []]
             calls.append(getattr(message, "function_call", None))  # deprecated single-call field
             for fn in calls:
@@ -476,8 +505,10 @@ class KawalLMGuardrail(CustomGuardrail):
                 delta = getattr(choice, "delta", None)
                 if delta is None:
                     continue
-                if isinstance(getattr(delta, "content", None), str):
-                    delta.content = st.feed_text(delta.content)
+                for field in _TEXT_FIELDS:
+                    value = getattr(delta, field, None)
+                    if isinstance(value, str):
+                        setattr(delta, field, st.feed_text(field, value))
                 if getattr(delta, "tool_calls", None) and self._tool_args_need_processing:
                     st.hold_tool_calls(delta.tool_calls)
                 fc = getattr(delta, "function_call", None)  # deprecated single-call field, streamed the same way
@@ -489,13 +520,7 @@ class KawalLMGuardrail(CustomGuardrail):
                     st.hold_function_call(fc)
                 if getattr(choice, "finish_reason", None) is not None:
                     # Release what is still held into this chunk, before its finish_reason reaches the client.
-                    tail, extras, legacy = st.finish()
-                    if tail:
-                        delta.content = (getattr(delta, "content", None) or "") + tail
-                    if extras:
-                        delta.tool_calls = [*(getattr(delta, "tool_calls", None) or []), *extras]
-                    if legacy is not None:
-                        delta.function_call = legacy
+                    _apply_tails(delta, *st.finish())
                     states.pop(getattr(choice, "index", 0) or 0, None)
             if pending is not None:
                 yield pending
@@ -509,12 +534,23 @@ class KawalLMGuardrail(CustomGuardrail):
         self._record("litellm.post_call", request_data, user_api_key_dict, counts)
 
 
-class _ChoiceStream:
-    """Streaming state of one response choice: text hold-back buffer and buffered tool-call arguments.
+def _json_default(value: Any) -> Any:
+    if isinstance(value, Decimal):  # a float that was left unchanged
+        return float(value)
+    raise TypeError(f"{type(value).__name__} is not JSON serializable")
 
-    Text is released in pieces that never split a placeholder or a digit run, each masked with the already
-    released text as context (so ``rekening`` right before a cut still applies to the number right after it).
-    Tool-call arguments are JSON, so they are collected and emitted whole at the end of the stream.
+
+# Text fields of a response message or stream delta that reach the user and so need the same protection as
+# ``content``. Each gets its own hold-back buffer when streamed.
+_TEXT_FIELDS = ("content", "reasoning_content", "refusal")
+
+
+class _TextChannel:
+    """Hold-back buffer of one text field of one choice.
+
+    Text is released in pieces that never split a placeholder, an entity or a digit run, each masked with the
+    already released text as context before it and the still held text after it (so ``rekening`` right before or
+    right after a number applies on either side of a cut).
     """
 
     CONTEXT = 160  # characters of released text kept as detector context
@@ -523,52 +559,13 @@ class _ChoiceStream:
         self.guard, self.sid, self.counts = guard, sid, counts
         self.buffer = ""
         self.context = ""
-        self.calls: dict[int, list] = {}  # tool call index -> [arguments so far, last fragment]
-        self.legacy_fc: Any = None  # copy of the first deprecated function_call fragment (carries the name)
-        self.legacy_args = ""
-        self.template: Any = None
 
-    def feed_text(self, text: str) -> str:
+    def feed(self, text: str) -> str:
         self.buffer += text
         return self._release(final=False)
 
-    def hold_tool_calls(self, tool_calls: list) -> None:
-        for tc in tool_calls:
-            fn = getattr(tc, "function", None)
-            if fn is None or not isinstance(getattr(fn, "arguments", None), str):
-                continue
-            entry = self.calls.setdefault(getattr(tc, "index", 0) or 0, ["", tc])
-            entry[0] += fn.arguments
-            entry[1] = tc
-            fn.arguments = ""  # id/name stay on the fragment; the arguments come back whole at the end
-
-    def hold_function_call(self, fc: Any) -> None:
-        if self.legacy_fc is None:
-            self.legacy_fc = copy.copy(fc)
-        self.legacy_args += fc.arguments
-        fc.arguments = ""
-
-    def finish(self) -> tuple[str, list, Any]:
-        tail = self._release(final=True)
-        extras = []
-        for raw, last in self.calls.values():
-            extra = copy.copy(last)
-            # Clients concatenate string fields across fragments, so only index + arguments may repeat.
-            for name in ("id", "type"):
-                if hasattr(extra, name):
-                    setattr(extra, name, None)
-            extra.function = copy.copy(last.function)
-            extra.function.name = None
-            extra.function.arguments = self.guard._process_tool_args(raw, self.sid, self.counts)
-            extras.append(extra)
-        self.calls.clear()
-        legacy = None
-        if self.legacy_fc is not None:
-            legacy = self.legacy_fc
-            legacy.name = None  # the name was already sent with the first fragment
-            legacy.arguments = self.guard._process_tool_args(self.legacy_args, self.sid, self.counts)
-            self.legacy_fc, self.legacy_args = None, ""
-        return tail, extras, legacy
+    def finish(self) -> str:
+        return self._release(final=True)
 
     def _keep_entities_whole(self, buf: str, cut: int) -> int:
         """Move the cut back to the start of any entity it would split (e.g. "B 1234 ABC" or "A 1234567").
@@ -630,9 +627,78 @@ class _ChoiceStream:
             ready, self.buffer = buf[:cut], buf[cut:]
         if not ready:
             return ""
-        out = self.guard._process_output(ready, self.sid, self.counts, self.context)
+        out = self.guard._process_output(ready, self.sid, self.counts, self.context, after=self.buffer)
         self.context = (self.context + ready)[-self.CONTEXT :]
         return out
+
+
+class _ChoiceStream:
+    """Streaming state of one response choice: a text channel per field and the buffered tool-call arguments.
+
+    Tool-call arguments are JSON, so they are collected and emitted whole at the end of the stream.
+    """
+
+    def __init__(self, guard: KawalLMGuardrail, sid: str | None, counts: Counter) -> None:
+        self.guard, self.sid, self.counts = guard, sid, counts
+        self.channels: dict[str, _TextChannel] = {}
+        self.calls: dict[int, list] = {}  # tool call index -> [arguments so far, last fragment]
+        self.legacy_fc: Any = None  # copy of the first deprecated function_call fragment (carries the name)
+        self.legacy_args = ""
+        self.template: Any = None
+
+    def feed_text(self, field: str, text: str) -> str:
+        channel = self.channels.get(field)
+        if channel is None:
+            channel = self.channels[field] = _TextChannel(self.guard, self.sid, self.counts)
+        return channel.feed(text)
+
+    def hold_tool_calls(self, tool_calls: list) -> None:
+        for tc in tool_calls:
+            fn = getattr(tc, "function", None)
+            if fn is None or not isinstance(getattr(fn, "arguments", None), str):
+                continue
+            entry = self.calls.setdefault(getattr(tc, "index", 0) or 0, ["", tc])
+            entry[0] += fn.arguments
+            entry[1] = tc
+            fn.arguments = ""  # id/name stay on the fragment; the arguments come back whole at the end
+
+    def hold_function_call(self, fc: Any) -> None:
+        if self.legacy_fc is None:
+            self.legacy_fc = copy.copy(fc)
+        self.legacy_args += fc.arguments
+        fc.arguments = ""
+
+    def finish(self) -> tuple[dict[str, str], list, Any]:
+        tails = {field: tail for field, ch in self.channels.items() if (tail := ch.finish())}
+        extras = []
+        for raw, last in self.calls.values():
+            extra = copy.copy(last)
+            # Clients concatenate string fields across fragments, so only index + arguments may repeat.
+            for name in ("id", "type"):
+                if hasattr(extra, name):
+                    setattr(extra, name, None)
+            extra.function = copy.copy(last.function)
+            extra.function.name = None
+            extra.function.arguments = self.guard._process_tool_args(raw, self.sid, self.counts)
+            extras.append(extra)
+        self.calls.clear()
+        legacy = None
+        if self.legacy_fc is not None:
+            legacy = self.legacy_fc
+            legacy.name = None  # the name was already sent with the first fragment
+            legacy.arguments = self.guard._process_tool_args(self.legacy_args, self.sid, self.counts)
+            self.legacy_fc, self.legacy_args = None, ""
+        return tails, extras, legacy
+
+
+def _apply_tails(delta: Any, tails: dict[str, str], extras: list, legacy: Any) -> None:
+    """Add what a stream still held to a delta that has not been sent yet."""
+    for field, tail in tails.items():
+        setattr(delta, field, (getattr(delta, field, None) or "") + tail)
+    if extras:
+        delta.tool_calls = [*(getattr(delta, "tool_calls", None) or []), *extras]
+    if legacy is not None:
+        delta.function_call = legacy
 
 
 def _attach_tails(pending: Any, states: dict[int, _ChoiceStream]) -> list:
@@ -643,27 +709,24 @@ def _attach_tails(pending: Any, states: dict[int, _ChoiceStream]) -> list:
     """
     synthetic = []
     for index, st in states.items():
-        tail, extras, legacy = st.finish()
-        if not tail and not extras and legacy is None:
+        tails, extras, legacy = st.finish()
+        if not tails and not extras and legacy is None:
             continue
         choice = next(
             (c for c in getattr(pending, "choices", None) or [] if (getattr(c, "index", 0) or 0) == index), None
         )
         if choice is not None and getattr(choice, "delta", None) is not None:
-            delta = choice.delta
-            if tail:
-                delta.content = (getattr(delta, "content", None) or "") + tail
-            if extras:
-                delta.tool_calls = [*(getattr(delta, "tool_calls", None) or []), *extras]
-            if legacy is not None:
-                delta.function_call = legacy
+            _apply_tails(choice.delta, tails, extras, legacy)
         elif st.template is not None:
             chunk = copy.copy(pending)
             new_choice = copy.copy(st.template)
             new_choice.delta = copy.copy(st.template.delta)
-            new_choice.delta.content = tail or None
-            new_choice.delta.tool_calls = extras or None
-            new_choice.delta.function_call = legacy
+            for field in _TEXT_FIELDS:
+                if hasattr(new_choice.delta, field):
+                    setattr(new_choice.delta, field, None)
+            new_choice.delta.tool_calls = None
+            new_choice.delta.function_call = None
+            _apply_tails(new_choice.delta, tails, extras, legacy)
             new_choice.finish_reason = None
             chunk.choices = [new_choice]
             synthetic.append(chunk)

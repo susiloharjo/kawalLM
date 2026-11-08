@@ -73,14 +73,15 @@ class Vault:
     def __init__(self, ttl: float = 600.0, max_sessions: int = 100_000) -> None:
         self.ttl = ttl
         self.max_sessions = max_sessions
-        self._data: dict[str, tuple[float, dict[str, str], dict[str, str]]] = {}
+        # session id -> (expires at, token -> original, original -> token, tokens per entity)
+        self._data: dict[str, tuple[float, dict[str, str], dict[str, str], dict[str, int]]] = {}
         self._lock = threading.Lock()
 
     def _purge(self, now: float) -> None:
         # Dict preserves insertion order and re-inserts move to the end, so the oldest
         # expiry timestamps are always at the front (O(expired) eviction).
         while self._data:
-            k, (exp, _, _) = next(iter(self._data.items()))
+            k, (exp, *_) = next(iter(self._data.items()))
             if exp >= now and len(self._data) <= self.max_sessions:
                 break
             del self._data[k]
@@ -88,20 +89,30 @@ class Vault:
     def token_for(self, session_id: str, entity: str, original: str) -> str:
         now = time.monotonic()
         with self._lock:
-            exp, fwd, rev = self._data.pop(session_id, (0.0, {}, {}))
+            exp, fwd, rev, counters = self._data.pop(session_id, (0.0, {}, {}, {}))
             if exp < now:  # unknown or expired: start clean, never revive old mappings by extending the TTL
-                fwd, rev = {}, {}
-            token = assign_token(fwd, rev, entity, original)
-            self._data[session_id] = (now + self.ttl, fwd, rev)
+                fwd, rev, counters = {}, {}, {}
+            token = assign_token(fwd, rev, entity, original, counters)
+            self._data[session_id] = (now + self.ttl, fwd, rev, counters)
             self._purge(now)
             return token
 
     def mapping(self, session_id: str) -> dict[str, str]:
+        now = time.monotonic()
         with self._lock:
+            self._purge(now)  # expired sessions are removed when anything reads, not only when something writes
             item = self._data.get(session_id)
-            if not item or item[0] < time.monotonic():
+            if not item or item[0] < now:
+                self._data.pop(session_id, None)
                 return {}
             return dict(item[1])
+
+    def sweep(self) -> int:
+        """Remove every expired session now (for a periodic task); returns how many were removed."""
+        with self._lock:
+            before = len(self._data)
+            self._purge(time.monotonic())
+            return before - len(self._data)
 
     def drop(self, session_id: str) -> None:
         with self._lock:
@@ -190,13 +201,17 @@ class KawalLMEngine:
             return "".join(reversed(out))
         return f"<{m.entity}>"
 
-    def mask(self, text: str, session_id: str | None = None, mode: str | None = None, context: str = "") -> MaskResult:
+    def mask(
+        self, text: str, session_id: str | None = None, mode: str | None = None, context: str = "", after: str = ""
+    ) -> MaskResult:
         """Mask PII. ``mode`` overrides the engine mode for this call only.
 
         ``context`` is text that precedes ``text`` and was already handled (for example the previous chunk of a
         stream, or a JSON field name). Detectors see it, so a keyword such as ``rekening`` still applies to a
         number in ``text``; it is neither returned nor masked, and values that straddle the boundary are left
-        to the caller that owns the earlier text.
+        to the caller that owns the earlier text. ``after`` is the same for text that FOLLOWS ``text`` and is not
+        released yet (a stream's held-back buffer): a keyword after the number ("1234567890 untuk rekening BCA")
+        still counts, and only matches that lie wholly inside ``text`` are replaced.
         """
         explicit = mode  # an explicit mode applies to every entity and replaces mode_by_entity for this call
         if not self.mask_pii_enabled or not text:
@@ -205,9 +220,14 @@ class KawalLMEngine:
         if needs_session and session_id is None:
             session_id = uuid.uuid4().hex
         offset = len(context)
-        matches = self.detect(context + text) if context else self.detect(text)
-        if offset:
-            matches = [replace(m, start=m.start - offset, end=m.end - offset) for m in matches if m.start >= offset]
+        matches = self.detect(context + text + after) if (context or after) else self.detect(text)
+        if offset or after:
+            end = offset + len(text)
+            matches = [
+                replace(m, start=m.start - offset, end=m.end - offset)
+                for m in matches
+                if m.start >= offset and m.end <= end
+            ]
         if not matches:
             return MaskResult(text, [], session_id)
         parts, last = [], 0

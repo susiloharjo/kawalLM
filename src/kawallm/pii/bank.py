@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-from .base import PIIMatch, digits_only, mentions_any
+from .base import PIIMatch, digits_only, mentions_any, separator_segments
 
 BANK_ACCOUNT_LENGTHS: dict[str, frozenset[int]] = {
     "bca": frozenset({10}),
@@ -54,34 +54,50 @@ def find_bank_account(text: str, window: int = 5, text_lower: str | None = None)
         return []
     out = []
     for m in ACCOUNT_RE.finditer(text):
-        raw = m.group()
-        # Reject candidates that mix different separators (e.g. "2026-11-07 20.45").
-        if len({ch for ch in raw if not ch.isdigit()}) > 1:
+        # Most candidates have no account context at all: reject them before looking at their parts.
+        around = low[max(0, m.start() - 120) : m.end() + 120]
+        if not mentions_any(around, _ALL_KEYWORDS, text_lower=around):
             continue
-        n = len(digits_only(raw))
-        if n not in GENERIC_LENGTHS:
-            continue
-        span_low = low[max(0, m.start() - 120) : m.end() + 120]
-        if not mentions_any(span_low, _ALL_KEYWORDS, text_lower=span_low):
-            continue
-        before = _WORD_RE.findall(low[max(0, m.start() - 120) : m.start()])[-window:]
-        after = _WORD_RE.findall(low[m.end() : m.end() + 120])[:window]
-        nearby: list[str] = []
-        n_b = len(before)
-        for i in range(n_b - 1, -1, -1):
-            if i > 0:
-                nearby.append(f"{before[i - 1]} {before[i]}")
-            nearby.append(before[i])
-        n_a = len(after)
-        for i in range(n_a):
-            if i + 1 < n_a:
-                nearby.append(f"{after[i]} {after[i + 1]}")
-            nearby.append(after[i])
-        bank = next((w for w in nearby if w in BANK_ACCOUNT_LENGTHS), None)
-        if bank is not None:
-            if n in BANK_ACCOUNT_LENGTHS[bank]:
-                out.append(PIIMatch("ID_BANK_ACCOUNT", m.start(), m.end(), raw, 0.95, {"bank": bank}))
-            continue
-        if any(w in GENERIC_KEYWORDS for w in nearby):
-            out.append(PIIMatch("ID_BANK_ACCOUNT", m.start(), m.end(), raw, 0.7, {}))
+        # The regex glues digit groups ("1234567890 1000000"); take the longest part that is a valid account.
+        for offset, raw in separator_segments(m.group()):
+            if sum(ch.isdigit() for ch in raw) not in GENERIC_LENGTHS:
+                continue
+            start = m.start() + offset
+            found = _evaluate(text, low, start, start + len(raw), raw, window)
+            if found is not None:
+                out.append(found)
+                break
     return out
+
+
+def _evaluate(text: str, low: str, start: int, end: int, raw: str, window: int) -> PIIMatch | None:
+    # Reject candidates that mix different separators (e.g. "2026-11-07 20.45").
+    if len({ch for ch in raw if not ch.isdigit()}) > 1:
+        return None
+    n = len(digits_only(raw))
+    if n not in GENERIC_LENGTHS:
+        return None
+    span_low = low[max(0, start - 120) : end + 120]
+    if not mentions_any(span_low, _ALL_KEYWORDS, text_lower=span_low):
+        return None
+    before = _WORD_RE.findall(low[max(0, start - 120) : start])[-window:]
+    after = _WORD_RE.findall(low[end : end + 120])[:window]
+    nearby: list[str] = []
+    n_b = len(before)
+    for i in range(n_b - 1, -1, -1):
+        if i > 0:
+            nearby.append(f"{before[i - 1]} {before[i]}")
+        nearby.append(before[i])
+    n_a = len(after)
+    for i in range(n_a):
+        if i + 1 < n_a:
+            nearby.append(f"{after[i]} {after[i + 1]}")
+        nearby.append(after[i])
+    bank = next((w for w in nearby if w in BANK_ACCOUNT_LENGTHS), None)
+    if bank is not None:
+        if n in BANK_ACCOUNT_LENGTHS[bank]:
+            return PIIMatch("ID_BANK_ACCOUNT", start, end, raw, 0.95, {"bank": bank})
+        return None  # a bank is named, so the generic keywords must not accept another length
+    if any(w in GENERIC_KEYWORDS for w in nearby):
+        return PIIMatch("ID_BANK_ACCOUNT", start, end, raw, 0.7, {})
+    return None

@@ -40,12 +40,25 @@ def nonce_of(mapping: dict[str, str]) -> str | None:
     return None
 
 
-def assign_token(fwd: dict[str, str], rev: dict[str, str], entity: str, original: str) -> str:
-    """Return the token for ``original``, creating ``<ENTITY_n_nonce>`` if new. Mutates both maps."""
+def assign_token(
+    fwd: dict[str, str],
+    rev: dict[str, str],
+    entity: str,
+    original: str,
+    counters: dict[str, int] | None = None,
+) -> str:
+    """Return the token for ``original``, creating ``<ENTITY_n_nonce>`` if new. Mutates both maps.
+
+    ``counters`` (entity -> how many tokens exist) lets a long-lived store number tokens in O(1); without it the
+    number is counted from ``fwd``, which is fine for the small maps callers keep themselves.
+    """
     token = rev.get(original)
     if token is None:
         nonce = nonce_of(fwd) or new_nonce()
-        n = sum(1 for t in fwd if t.startswith(f"<{entity}_")) + 1
+        if counters is not None:
+            n = counters[entity] = counters.get(entity, 0) + 1
+        else:
+            n = sum(1 for t in fwd if t.startswith(f"<{entity}_")) + 1
         token = f"<{entity}_{n}_{nonce}>"
         fwd[token] = original
         rev[original] = token

@@ -171,7 +171,7 @@ guardrails:
 |---|---|
 | `pre_call` | Safety check pada pesan **role user** (system prompt tidak dicek agar "jangan bocorkan system prompt" tidak memicu blokir) → HTTP 400. PII dimaskir di **semua role**, termasuk multimodal text parts dan argumen `tool_calls` / `function_call` (JSON tetap valid). |
 | `post_call` | PII baru dari model dimaskir (*output leakage*), lalu placeholder `<ID_X_n_nonce>` milik pemanggil dikembalikan (reversible). Argumen `tool_calls` dan `function_call`, termasuk streaming, juga diproses dengan aturan yang sama. |
-| streaming | Sama, dengan *hold-back buffer* 64 karakter agar nilai yang terpotong antar chunk tetap tertangkap. |
+| streaming | Sama, dengan *hold-back buffer* 64 karakter agar nilai yang terpotong antar chunk tetap tertangkap. Hasilnya identik dengan non-streaming; `reasoning_content` dan `refusal` ikut dimaskir. |
 
 **Dashboard dan logging LiteLLM.** Hasil tiap request (`success` atau `guardrail_intervened`, jumlah entitas per jenis, kategori pelanggaran) ditulis ke `standard_logging_guardrail_information` dengan provider `kawallm`, sehingga Guardrails Monitor, Langfuse, dan Datadog bisa menampilkannya. Hanya jumlah dan nama kategori yang dicatat, tanpa teks atau nilai PII. Butuh `kawallm >= 0.2.3`; versi LiteLLM tanpa helper ini dilewati.
 

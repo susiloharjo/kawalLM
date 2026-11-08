@@ -12,11 +12,16 @@ from .core import KawalLMEngine
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="kawallm", description="Scan & mask Indonesian PII / unsafe content.")
     p.add_argument("text", nargs="?", help="text to scan (default: stdin)")
-    p.add_argument("--mode", default="token", choices=["token", "redact", "partial", "reversible"])
+    p.add_argument("--mode", default="token", choices=["token", "redact", "partial", "reversible", "generalize"])
+    p.add_argument(
+        "--entities",
+        default=None,
+        help='profile or comma list: "core" (default), "extended" (adds birth date, age, postal code, address, GPS)',
+    )
     p.add_argument("--json", action="store_true", help="print full JSON report")
     a = p.parse_args(argv)
     text = a.text if a.text is not None else sys.stdin.read()
-    eng = KawalLMEngine(mode=a.mode)
+    eng = KawalLMEngine(mode=a.mode, entities=a.entities)
     safety = eng.scan_safety(text)
     masked = eng.mask(text)
     if a.json:

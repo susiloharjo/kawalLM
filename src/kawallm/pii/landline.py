@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 
-from .base import PIIMatch, digits_only, has_keyword_near
+from .base import PIIMatch, digits_only, has_keyword_near, separator_segments
 
 # fmt: off
 AREA_CODES = frozenset(
@@ -63,10 +63,14 @@ def find_landline(text: str) -> list[PIIMatch]:
     for m in LANDLINE_RE.finditer(text):
         if m.start() and (text[m.start() - 1].isdigit() or text[m.start() - 1] == "+"):
             continue  # starts inside a longer number
-        parts = split_landline(m.group())
-        if parts is None:
-            continue
-        explicit = m.group().startswith("+62") or any(ch in m.group() for ch in " .-")
-        if explicit or has_keyword_near(text, m.start(), m.end(), KEYWORDS):
-            out.append(PIIMatch("ID_PHONE", m.start(), m.end(), m.group(), 0.9, {"landline": True, "area": parts[0]}))
+        for offset, part in separator_segments(m.group(), anchored_start=True):
+            parts = split_landline(part)
+            if parts is None:
+                continue
+            start = m.start() + offset
+            end = start + len(part)
+            explicit = part.startswith("+62") or any(ch in part for ch in " .-")
+            if explicit or has_keyword_near(text, start, end, KEYWORDS):
+                out.append(PIIMatch("ID_PHONE", start, end, part, 0.9, {"landline": True, "area": parts[0]}))
+            break
     return out

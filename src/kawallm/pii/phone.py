@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 
-from .base import PIIMatch, digits_only
+from .base import PIIMatch, digits_only, separator_segments
 from .landline import find_landline
 
 PHONE_RE = re.compile(r"(?:\+(?<![\d+].)62|6(?<![\d+].)2|0(?<![\d+].))[\s.\-]?8\d{1,2}(?:[\s.\-]?\d){6,10}(?!\d)")
@@ -45,7 +45,11 @@ def find_phone(text: str) -> list[PIIMatch]:
     out = []
     if "8" in text:
         for m in PHONE_RE.finditer(text):
-            op = phone_operator(m.group())
-            if op:
-                out.append(PIIMatch("ID_PHONE", m.start(), m.end(), m.group(), 1.0, {"operator": op}))
+            # The regex may glue trailing groups ("0812 3456 7890 25"); take the longest valid part from the start.
+            for offset, part in separator_segments(m.group(), anchored_start=True):
+                op = phone_operator(part)
+                if op:
+                    start = m.start() + offset
+                    out.append(PIIMatch("ID_PHONE", start, start + len(part), part, 1.0, {"operator": op}))
+                    break
     return out + find_landline(text)

@@ -17,6 +17,8 @@ jobs:
           [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} != version v$v"; exit 1; }
       - run: uv venv --clear && uv pip install -e ".[dev,litellm,presidio]"
       - run: uv run pytest --cov --cov-fail-under=90
+      - name: Breach evals (leak regressions must not ship)
+        run: uv run pytest evals/breaches -p no:cacheprovider
 
   pypi:
     needs: test

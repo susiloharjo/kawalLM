@@ -12,6 +12,7 @@ import ahocorasick
 
 # Priority when two detections overlap: higher wins.
 PRIORITY = {
+    "EMAIL": 101,  # a whole address is protected even when digits inside it look like a phone number or NIK
     "ID_NIK": 100,
     "ID_NIP": 95,
     "ID_NPWP": 90,
@@ -22,7 +23,6 @@ PRIORITY = {
     "ID_NISN": 66,
     "ID_SIM": 65,
     "ID_PHONE": 60,
-    "EMAIL": 55,
     "ID_ADDRESS": 48,
     "GEO_COORDINATES": 47,
     "ID_BIRTHDATE": 46,
@@ -62,6 +62,35 @@ def _get_automaton(keywords: frozenset[str]) -> ahocorasick.Automaton:
         auto.add_word(k, k)
     auto.make_automaton()
     return auto
+
+
+_DIGIT_GROUP = re.compile(r"\d+")
+
+
+def separator_segments(raw: str, anchored_start: bool = False):
+    """Yield ``(offset, segment)`` of a digit run, longest first, cutting only at the separators inside it.
+
+    A regex that glues digit groups together ("081234567890 25 November", "BCA 1234567890 1000000") can produce a
+    candidate that fails validation as a whole even though a part of it is a valid number. Trying the parts in
+    order of length (the whole candidate first) keeps the old result when the whole candidate is valid and finds
+    the valid part otherwise. ``anchored_start=True`` keeps only segments that begin at the start of ``raw``,
+    for patterns whose first digits carry the meaning (a phone prefix).
+    """
+    yield 0, raw  # the whole candidate comes first and costs nothing; the parts below are only built if it fails
+    groups = [(m.start(), m.end()) for m in _DIGIT_GROUP.finditer(raw)]
+    spans = []
+    for i, (start, _) in enumerate(groups):
+        if anchored_start and i:
+            break
+        if anchored_start:
+            start = 0  # keep a leading "+" or other marker that the pattern matched before the first digit
+        for j in range(i, len(groups)):
+            spans.append((start, groups[j][1]))
+    spans.sort(key=lambda s: s[0] - s[1])  # longest first; ties keep the leftmost
+    for start, end in spans:
+        if start == 0 and end == len(raw):
+            continue  # the whole candidate was already offered
+        yield start, raw[start:end]
 
 
 def mentions_any(text: str, keywords: frozenset[str], text_lower: str | None = None) -> bool:

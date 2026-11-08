@@ -34,6 +34,17 @@ SUPPORTED_ENTITIES = [
     "EMAIL",
 ]
 
+# Quasi-identifiers: opt-in, like the "extended" profile of the core engine.
+EXTENDED_SUPPORTED_ENTITIES = [
+    *SUPPORTED_ENTITIES,
+    "ID_BIRTHDATE",
+    "ID_AGE",
+    "ID_POSTAL_CODE",
+    "ID_ADDRESS",
+    "GEO_COORDINATES",
+]
+_PROFILES = {"core": SUPPORTED_ENTITIES, "extended": EXTENDED_SUPPORTED_ENTITIES}
+
 _DETECTOR_FOR = {
     "ID_BPJS_KES": "ID_BPJS",
     "ID_BPJS_TK": "ID_BPJS",
@@ -46,10 +57,13 @@ class KawalLMRecognizer(EntityRecognizer):
         supported_language: str = "id",
         supported_entities: list[str] | None = None,
         validate_wilayah: bool = True,
+        profile: str = "core",
     ) -> None:
+        if profile not in _PROFILES:
+            raise ValueError(f"profile must be one of {sorted(_PROFILES)}, got {profile!r}")
         self.validate_wilayah = validate_wilayah
         super().__init__(
-            supported_entities=supported_entities or SUPPORTED_ENTITIES,
+            supported_entities=supported_entities or _PROFILES[profile],
             supported_language=supported_language,
             name="KawalLMRecognizer",
         )
@@ -69,7 +83,7 @@ class KawalLMRecognizer(EntityRecognizer):
         ]
 
 
-def analyzer_without_nlp(language: str = "id", validate_wilayah: bool = True):
+def analyzer_without_nlp(language: str = "id", validate_wilayah: bool = True, profile: str = "core"):
     """AnalyzerEngine with only KawalLM recognizers and no spaCy model download."""
     from presidio_analyzer import AnalyzerEngine, RecognizerRegistry
     from presidio_analyzer.nlp_engine import NlpArtifacts, NlpEngine
@@ -101,5 +115,7 @@ def analyzer_without_nlp(language: str = "id", validate_wilayah: bool = True):
             return [language]
 
     registry = RecognizerRegistry(supported_languages=[language])
-    registry.add_recognizer(KawalLMRecognizer(supported_language=language, validate_wilayah=validate_wilayah))
+    registry.add_recognizer(
+        KawalLMRecognizer(supported_language=language, validate_wilayah=validate_wilayah, profile=profile)
+    )
     return AnalyzerEngine(registry=registry, nlp_engine=_NoNlp(), supported_languages=[language])

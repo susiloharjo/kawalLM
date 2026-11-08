@@ -2,6 +2,19 @@
 
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikuti [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Angka valid yang diikuti angka lain ("HP 081234567890 25 November", "rekening BCA 1234567890 1000000") kini tetap dimaskir: detektor HP, telepon rumah, dan rekening mencoba kandidat utuh lalu bagian-bagiannya (terpanjang dulu).
+- Streaming kini identik dengan non-streaming untuk setiap pemotongan chunk; konteks sebelum/sesudah dipakai saat mendeteksi di buffer hold-back.
+- `reasoning_content`, `refusal`, dan `thinking_blocks` ikut dimaskir (stream dan respons lengkap), masing-masing dengan buffer sendiri.
+- Argumen tool-call: kunci JSON ikut dimaskir (tabrakan kunci diberi akhiran `#`), float seperti `3171011501900001.0` atau `3.17e15` dikenali, dan hasilnya selalu JSON valid.
+- Email dimaskir utuh walau digit di dalamnya mirip entitas lain (`EMAIL` kini prioritas tertinggi).
+- Audit: `context["path"]` FastAPI dimaskir.
+- Vault: sesi kedaluwarsa dihapus saat dibaca, ada `Vault.sweep()`, dan penomoran token reversible O(1) per entitas (sebelumnya kuadratik).
+- CLI: `--entities` (profil atau daftar) dan `--mode generalize`; Presidio: parameter `profile`.
+- docker-compose: `LITELLM_MASTER_KEY` wajib diisi (tanpa default); rilis menjalankan `evals/breaches`.
+
 ## [0.3.0] - 2026-11-09
 
 **Perhatian keamanan:** 0.2.2 dan 0.2.3 punya celah di middleware FastAPI (lihat *Fixed* di bawah). Pengguna `KawalLMMiddleware` sebaiknya segera meningkatkan ke 0.3.0.

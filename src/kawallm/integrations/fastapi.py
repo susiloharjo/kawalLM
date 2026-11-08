@@ -180,7 +180,8 @@ class KawalLMMiddleware:
                 return
         counts: Counter = Counter()
         state = [False]
-        ctx = {"method": scope.get("method", ""), "path": scope["path"]}
+        # The path can carry PII (/chat/3171011501900001); it is masked before it reaches the audit log.
+        ctx = {"method": scope.get("method", ""), "path": self.engine.mask(scope["path"], mode="token").text}
         # Only a failure to PARSE lets the body through unchanged (it is not JSON, so there is nothing to scan).
         # A failure while sanitising or re-encoding must never forward the original body: that would leak what
         # was supposed to be masked, so those requests are refused.
