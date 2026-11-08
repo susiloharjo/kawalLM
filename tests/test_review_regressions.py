@@ -245,3 +245,61 @@ async def test_email_is_not_split_by_long_whitespace_free_stream():
     pieces = [text[i : i + 7] for i in range(0, len(text), 7)]
     out = await collect(g, [chunk(p) for p in pieces])
     assert "contoh" not in out[0] and "<EMAIL>" in out[0]
+
+
+async def test_nik_split_across_text_parts_is_masked():
+    """A value split over several text parts of one message must not reach the upstream whole."""
+    g = G()
+    d = {
+        "messages": [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "NIK 31710115"}, {"type": "text", "text": "01900001"}],
+            }
+        ]
+    }
+    await g.async_pre_call_hook(None, None, d, "completion")
+    joined = "".join(p["text"] for p in d["messages"][0]["content"])
+    assert NIK not in joined and "3171011" not in joined and "01900001" not in joined
+    assert "<ID_NIK>" in joined
+
+
+async def test_nik_split_across_three_parts_and_neighbouring_text_is_kept():
+    g = G()
+    parts = ["tolong cek ", "NIK 317101", "1501900001 dan HP 0812", "34567890 terima kasih"]
+    d = {"messages": [{"role": "user", "content": [{"type": "text", "text": t} for t in parts]}]}
+    await g.async_pre_call_hook(None, None, d, "completion")
+    out = "".join(p["text"] for p in d["messages"][0]["content"])
+    assert out == "tolong cek NIK <ID_NIK> dan HP <ID_PHONE> terima kasih"
+
+
+async def test_streamed_legacy_function_call_arguments_are_masked():
+    g = G(masking_mode="token")
+
+    async def gen():
+        yield NS(
+            choices=[
+                NS(
+                    index=0,
+                    delta=NS(
+                        content=None,
+                        tool_calls=None,
+                        function_call=NS(name="kirim", arguments='{"nik":"3171011501900001"'),
+                    ),
+                )
+            ]
+        )
+        yield NS(
+            choices=[NS(index=0, delta=NS(content=None, tool_calls=None, function_call=NS(name=None, arguments="}")))]
+        )
+        yield NS(choices=[NS(index=0, delta=NS(content=None, tool_calls=None, function_call=None))])
+
+    args, names = "", []
+    async for c in g.async_post_call_streaming_iterator_hook(None, gen(), {}):
+        fc = getattr(c.choices[0].delta, "function_call", None)
+        if fc is not None:
+            args += fc.arguments or ""
+            if fc.name:
+                names.append(fc.name)
+    assert NIK not in args and json.loads(args) == {"nik": "<ID_NIK>"}
+    assert names == ["kirim"]  # the name is sent once

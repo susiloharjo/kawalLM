@@ -311,8 +311,42 @@ class KawalLMGuardrail(CustomGuardrail):
                         self._check(" ".join(texts))
                     for t in texts:
                         self._check(t)
-                for part in parts:
-                    part["text"] = self._mask_text(part["text"], sid, counts)
+                if len(parts) > 1:
+                    self._mask_text_parts(parts, sid, counts)
+                else:
+                    for part in parts:
+                        part["text"] = self._mask_text(part["text"], sid, counts)
+
+    def _mask_text_parts(self, parts: list[dict], sid: str | None, counts: Counter) -> None:
+        """Mask several text parts of one message as a single text, then give each part back its share.
+
+        Masking part by part misses a value split across parts (e.g. "NIK 31710115" + "01900001"). The parts are
+        joined for detection; a match is replaced by one token in the part where it starts, and the characters of
+        that match that fall into later parts are removed there.
+        """
+        texts = [p["text"] for p in parts]
+        joined = "".join(texts)
+        matches = self.engine.detect(joined)
+        if not matches:
+            return
+        mode = self.engine.mode
+        pairs = [(m, self.engine._replacement(m, sid, mode)) for m in matches]
+        counts.update(m.entity for m in matches)
+        start = 0
+        for part, text in zip(parts, texts, strict=True):
+            end = start + len(text)
+            seg, cur = [], start
+            for m, tok in pairs:
+                if m.end <= start or m.start >= end:
+                    continue
+                s, e = max(m.start, start), min(m.end, end)
+                seg.append(joined[cur:s])
+                if m.start >= start:  # the token belongs to the part where the match begins
+                    seg.append(tok)
+                cur = e
+            seg.append(joined[cur:end])
+            part["text"] = "".join(seg)
+            start = end
 
     # ------------------------------------------------------------ post-call
     async def async_post_call_success_hook(
@@ -359,6 +393,13 @@ class KawalLMGuardrail(CustomGuardrail):
                     delta.content = st.feed_text(delta.content)
                 if getattr(delta, "tool_calls", None) and self._tool_args_need_processing:
                     st.hold_tool_calls(delta.tool_calls)
+                fc = getattr(delta, "function_call", None)  # deprecated single-call field, streamed the same way
+                if (
+                    fc is not None
+                    and isinstance(getattr(fc, "arguments", None), str)
+                    and self._tool_args_need_processing
+                ):
+                    st.hold_function_call(fc)
             if pending is not None:
                 yield pending
             pending = chunk
@@ -385,6 +426,8 @@ class _ChoiceStream:
         self.buffer = ""
         self.context = ""
         self.calls: dict[int, list] = {}  # tool call index -> [arguments so far, last fragment]
+        self.legacy_fc: Any = None  # copy of the first deprecated function_call fragment (carries the name)
+        self.legacy_args = ""
         self.template: Any = None
 
     def feed_text(self, text: str) -> str:
@@ -401,7 +444,13 @@ class _ChoiceStream:
             entry[1] = tc
             fn.arguments = ""  # id/name stay on the fragment; the arguments come back whole at the end
 
-    def finish(self) -> tuple[str, list]:
+    def hold_function_call(self, fc: Any) -> None:
+        if self.legacy_fc is None:
+            self.legacy_fc = copy.copy(fc)
+        self.legacy_args += fc.arguments
+        fc.arguments = ""
+
+    def finish(self) -> tuple[str, list, Any]:
         tail = self._release(final=True)
         extras = []
         for raw, last in self.calls.values():
@@ -415,7 +464,13 @@ class _ChoiceStream:
             extra.function.arguments = self.guard._process_tool_args(raw, self.sid, self.counts)
             extras.append(extra)
         self.calls.clear()
-        return tail, extras
+        legacy = None
+        if self.legacy_fc is not None:
+            legacy = self.legacy_fc
+            legacy.name = None  # the name was already sent with the first fragment
+            legacy.arguments = self.guard._process_tool_args(self.legacy_args, self.sid, self.counts)
+            self.legacy_fc, self.legacy_args = None, ""
+        return tail, extras, legacy
 
     def _release(self, final: bool) -> str:
         buf = self.buffer
@@ -466,8 +521,8 @@ def _attach_tails(pending: Any, states: dict[int, _ChoiceStream]) -> list:
     """
     synthetic = []
     for index, st in states.items():
-        tail, extras = st.finish()
-        if not tail and not extras:
+        tail, extras, legacy = st.finish()
+        if not tail and not extras and legacy is None:
             continue
         choice = next(
             (c for c in getattr(pending, "choices", None) or [] if (getattr(c, "index", 0) or 0) == index), None
@@ -478,12 +533,15 @@ def _attach_tails(pending: Any, states: dict[int, _ChoiceStream]) -> list:
                 delta.content = (getattr(delta, "content", None) or "") + tail
             if extras:
                 delta.tool_calls = [*(getattr(delta, "tool_calls", None) or []), *extras]
+            if legacy is not None:
+                delta.function_call = legacy
         elif st.template is not None:
             chunk = copy.copy(pending)
             new_choice = copy.copy(st.template)
             new_choice.delta = copy.copy(st.template.delta)
             new_choice.delta.content = tail or None
             new_choice.delta.tool_calls = extras or None
+            new_choice.delta.function_call = legacy
             new_choice.finish_reason = None
             chunk.choices = [new_choice]
             synthetic.append(chunk)
