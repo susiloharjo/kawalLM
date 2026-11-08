@@ -1,6 +1,7 @@
 """Regression tests for the fourth review: keyword distance in streams, thinking blocks in streams and requests,
 exponent expansion, and exact number text in tool-call arguments."""
 
+import copy
 import json
 from types import SimpleNamespace as NS
 
@@ -77,7 +78,7 @@ async def test_thinking_block_text_is_masked_in_a_stream(size):
     text = f"Pikir: NIK {NIK} lalu rekening BCA 1234567890 selesai " + "x " * 40
     thinking, signatures = await _stream_thinking(_guard(), text, size)
     assert NIK not in thinking and "1234567890" not in thinking
-    assert thinking == KawalLM().scan(text).sanitized_text
+    assert thinking == ""  # changed signed blocks are dropped, including their text
     assert signatures == []  # the text changed, so the original signature is not sent with it
 
 
@@ -151,7 +152,7 @@ def _thinking_chunk(blocks, finish=None):
     return types.ModelResponseStream(choices=[types.StreamingChoices(index=0, finish_reason=finish, delta=delta)])
 
 
-async def _assembled_thinking(g, inputs):
+async def _assembled_thinking(g, inputs, request_data=None):
     """Run the stream through the guardrail, then rebuild the message the way LiteLLM does for a client."""
     pytest.importorskip("litellm")
     from litellm.litellm_core_utils.streaming_chunk_builder_utils import ChunkProcessor
@@ -160,7 +161,7 @@ async def _assembled_thinking(g, inputs):
         for c in inputs:
             yield c
 
-    emitted = [c.model_dump() async for c in g.async_post_call_streaming_iterator_hook(None, gen(), {})]
+    emitted = [c.model_dump() async for c in g.async_post_call_streaming_iterator_hook(None, gen(), request_data or {})]
     return ChunkProcessor(emitted).get_combined_thinking_content(emitted)
 
 
@@ -186,7 +187,7 @@ async def test_two_thinking_blocks_with_the_same_number_are_masked_separately():
         _thinking_chunk([{"type": "thinking", "thinking": "", "signature": "sig-b", "index": 1}]),
         _thinking_chunk([], "stop"),
     ]
-    assert await _stream_by_index(_guard(), inputs) == {0: "NIK <ID_NIK>", 1: "NIK <ID_NIK>"}
+    assert await _stream_by_index(_guard(), inputs) == {0: "", 1: ""}
 
 
 @pytest.mark.parametrize("size", [1, 4, 9])
@@ -198,7 +199,7 @@ async def test_a_signed_block_whose_text_changed_is_not_sent_as_a_reusable_block
     ]
     inputs.append(_thinking_chunk([{"type": "thinking", "thinking": "", "signature": "sig-x", "index": 0}]))
     inputs.append(_thinking_chunk([], "stop"))
-    assert await _stream_by_index(_guard(), inputs) == {0: KawalLM().scan(text).sanitized_text}
+    assert await _stream_by_index(_guard(), copy.deepcopy(inputs)) == {0: ""}
     assert not await _assembled_thinking(_guard(), inputs)  # no block carries sig-x with masked text
 
 
@@ -248,3 +249,32 @@ async def test_unsigned_thinking_text_at_the_end_of_a_stream_is_still_masked():
         for b in (getattr(c.choices[0].delta, "thinking_blocks", None) or [])
     )
     assert NIK not in text and text == "NIK <ID_NIK>"
+
+
+@pytest.mark.parametrize("order", [(True, False), (False, True), (True, False, False)])
+@pytest.mark.parametrize("indexed", [True, False])
+@pytest.mark.parametrize("restore", [False, True])
+async def test_changed_signed_block_does_not_contaminate_clean_blocks_or_history(order, indexed, restore):
+    g = _guard(masking_mode="reversible" if restore else "token")
+    request_data = {"messages": [{"role": "user", "content": f"NIK {NIK}"}]}
+    await g.async_pre_call_hook(None, None, request_data, "completion")
+    dirty_text = request_data["messages"][0]["content"] if restore else f"NIK {NIK}"
+    inputs = []
+    expected = []
+    for i, dirty in enumerate(order):
+        text = dirty_text if dirty else f"langkah bersih {i}"
+        signature = f"signature-{i}"
+        index = {"index": i} if indexed else {}
+        inputs.extend(
+            [
+                _thinking_chunk([{"type": "thinking", "thinking": text, **index}]),
+                _thinking_chunk([{"type": "thinking", "thinking": "", "signature": signature, **index}]),
+            ]
+        )
+        if not dirty:
+            expected.append({"type": "thinking", "thinking": text, "signature": signature})
+    inputs.append(_thinking_chunk([], "stop"))
+    blocks = await _assembled_thinking(g, inputs, request_data)
+    assert blocks == expected
+    history = {"role": "assistant", "content": "ok", "thinking_blocks": blocks}
+    assert (await _pre(g, history))["thinking_blocks"] == expected

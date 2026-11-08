@@ -622,13 +622,6 @@ def _block_signature(block: Any) -> Any:
     return block.get("signature") if isinstance(block, dict) else getattr(block, "signature", None)
 
 
-def _set_block_signature(block: Any, signature: Any) -> None:
-    if isinstance(block, dict):
-        block["signature"] = signature
-    else:
-        block.signature = signature
-
-
 def _set_block_text(block: Any, text: str) -> None:
     if isinstance(block, dict):
         block["thinking"] = text
@@ -762,9 +755,11 @@ class _ChoiceStream:
             fn.arguments = ""  # id/name stay on the fragment; the arguments come back whole at the end
 
     def hold_thinking(self, blocks: list) -> None:
+        kept = []
         for block in blocks:
             text = _block_text(block)
             if not isinstance(text, str):
+                kept.append(block)
                 continue
             key = _block_index(block)
             if text:
@@ -775,11 +770,13 @@ class _ChoiceStream:
                 if parts:
                     original = "".join(parts)
                     masked = self.guard._process_output(original, self.sid, self.counts)
-                    _set_block_text(block, masked)
                     if masked != original:
-                        # The signature belongs to the original text. Without it the assembler does not
-                        # complete the block, so the masked text is not sent as a reusable signed block.
-                        _set_block_signature(block, None)
+                        # Drop both text and signature. Unsigned text would remain in the assembler's
+                        # buffer and be attached to the next clean block's signature.
+                        continue
+                    _set_block_text(block, masked)
+            kept.append(block)
+        blocks[:] = kept
 
     def hold_function_call(self, fc: Any) -> None:
         if self.legacy_fc is None:
