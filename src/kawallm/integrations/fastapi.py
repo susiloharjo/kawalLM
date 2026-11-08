@@ -14,6 +14,7 @@ your handler sees them. Violations return 400 with a JSON error.
 from __future__ import annotations
 
 import json
+import uuid
 from collections import Counter
 from collections.abc import Iterable
 from typing import Any
@@ -43,8 +44,8 @@ class KawalLMMiddleware:
         self.audit = as_audit_log(audit) or self.engine.audit
         self.scan_system_messages = scan_system_messages
 
-    def _sanitize_str(self, v: str, counts: Counter, state: list[bool]) -> str:
-        if self.engine.block_violations:
+    def _sanitize_str(self, v: str, counts: Counter, state: list[bool], scan: bool = True) -> str:
+        if scan and self.engine.block_violations:
             safety = self.engine.scan_safety(v)
             if not safety.safe:
                 raise _Violation(safety.reason, list(safety.violations))
@@ -55,38 +56,91 @@ class KawalLMMiddleware:
             state[0] = True
         return masked.text
 
-    def _walk(self, obj: Any, counts: Counter, state: list[bool]) -> Any:
+    def _mask_text_parts(self, parts: list[dict], counts: Counter, state: list[bool]) -> None:
+        if not self.engine.mask_pii_enabled:
+            return
+        texts = [p["text"] for p in parts]
+        joined = "".join(texts)
+        matches = self.engine.detect(joined)
+        if not matches:
+            return
+        mode = self.engine.mode
+        sid = uuid.uuid4().hex if mode == "reversible" else None
+        pairs = [(m, self.engine._replacement(m, sid, mode)) for m in matches]
+        counts.update(m.entity for m in matches)
+        state[0] = True
+        start = 0
+        for part, text in zip(parts, texts, strict=True):
+            end = start + len(text)
+            seg, cur = [], start
+            for m, tok in pairs:
+                if m.end <= start or m.start >= end:
+                    continue
+                s, e = max(m.start, start), min(m.end, end)
+                seg.append(joined[cur:s])
+                if m.start >= start:
+                    seg.append(tok)
+                cur = e
+            seg.append(joined[cur:end])
+            part["text"] = "".join(seg)
+            start = end
+
+    def _walk(self, obj: Any, counts: Counter, state: list[bool], scan: bool = True) -> Any:
         if isinstance(obj, dict):
             if obj.get("role") == "system" and not self.scan_system_messages:
-                return obj
+                scan = False
             out = {}
             for k, v in obj.items():
                 if isinstance(v, str) and (k in self.fields or k == "content"):
-                    out[k] = self._sanitize_str(v, counts, state)
+                    out[k] = self._sanitize_str(v, counts, state, scan=scan)
                 elif isinstance(v, list) and (k == "content" or k in self.fields):
+                    new_list = [dict(item) if isinstance(item, dict) else item for item in v]
                     parts = [
                         p
-                        for p in v
+                        for p in new_list
                         if isinstance(p, dict) and p.get("type") == "text" and isinstance(p.get("text"), str)
                     ]
                     texts = [p["text"] for p in parts]
-                    if len(texts) > 1 and self.engine.block_violations:
-                        for combined in ("".join(texts), " ".join(texts)):
-                            safety = self.engine.scan_safety(combined)
+                    if scan and self.engine.block_violations:
+                        if len(texts) > 1:
+                            for combined in ("".join(texts), " ".join(texts)):
+                                safety = self.engine.scan_safety(combined)
+                                if not safety.safe:
+                                    raise _Violation(safety.reason, list(safety.violations))
+                        for t in texts:
+                            safety = self.engine.scan_safety(t)
                             if not safety.safe:
                                 raise _Violation(safety.reason, list(safety.violations))
-                    new_list = []
-                    for item in v:
-                        if isinstance(item, dict) and item.get("type") == "text" and isinstance(item.get("text"), str):
-                            new_list.append({**item, "text": self._sanitize_str(item["text"], counts, state)})
-                        else:
-                            new_list.append(self._walk(item, counts, state))
-                    out[k] = new_list
+                    if len(parts) > 1:
+                        self._mask_text_parts(parts, counts, state)
+                        out[k] = [
+                            item
+                            if (
+                                isinstance(item, dict)
+                                and item.get("type") == "text"
+                                and isinstance(item.get("text"), str)
+                            )
+                            else self._walk(item, counts, state, scan=scan)
+                            for item in new_list
+                        ]
+                    else:
+                        for p in parts:
+                            p["text"] = self._sanitize_str(p["text"], counts, state, scan=False)
+                        out[k] = [
+                            item
+                            if (
+                                isinstance(item, dict)
+                                and item.get("type") == "text"
+                                and isinstance(item.get("text"), str)
+                            )
+                            else self._walk(item, counts, state, scan=scan)
+                            for item in new_list
+                        ]
                 else:
-                    out[k] = self._walk(v, counts, state)
+                    out[k] = self._walk(v, counts, state, scan=scan)
             return out
         if isinstance(obj, list):
-            return [self._walk(v, counts, state) for v in obj]
+            return [self._walk(v, counts, state, scan=scan) for v in obj]
         return obj
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:

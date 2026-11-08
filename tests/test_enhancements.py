@@ -111,18 +111,66 @@ def test_fastapi_system_message_and_multimodal():
 
     c1 = TestClient(app1)
 
-    # System message containing safety keywords is ignored by default
+    # System message containing safety keywords is ignored for safety by default, but PII is still masked
     res = c1.post(
         "/chat",
         json={
             "messages": [
-                {"role": "system", "content": "You are an assistant. Never promote slot gacor maxwin depo pulsa."},
+                {
+                    "role": "system",
+                    "content": "You are an assistant for 081234567890. Never promote slot gacor maxwin depo pulsa.",
+                },
                 {"role": "user", "content": "halo apa kabar"},
             ]
         },
     )
     assert res.status_code == 200
     assert "slot gacor" in res.json()["messages"][0]["content"]
+    assert "<ID_PHONE>" in res.json()["messages"][0]["content"]
+
+    # Multimodal split PII across parts must be masked
+    res_split_pii = c1.post(
+        "/chat",
+        json={
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "NIK 31710115"},
+                        {"type": "text", "text": "01900001 selesai"},
+                        {"type": "image_url", "image_url": {"url": "https://example.com/ktp.png"}},
+                    ],
+                }
+            ]
+        },
+    )
+    assert res_split_pii.status_code == 200
+    parts_out = res_split_pii.json()["messages"][0]["content"]
+    assert parts_out[0]["text"] == "NIK <ID_NIK>"
+    assert parts_out[1]["text"] == " selesai"
+
+    # Single-part multimodal PII masking works even when "text" is not in custom fields
+    app_custom = FastAPI()
+    app_custom.add_middleware(KawalLMMiddleware, paths=("/chat",), fields=("prompt",))
+
+    @app_custom.post("/chat")
+    async def chat_custom(req: Request):
+        return await req.json()
+
+    c_custom = TestClient(app_custom)
+    res_single_part = c_custom.post(
+        "/chat",
+        json={
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": "HP 081234567890"}],
+                }
+            ]
+        },
+    )
+    assert res_single_part.status_code == 200
+    assert res_single_part.json()["messages"][0]["content"][0]["text"] == "HP <ID_PHONE>"
 
     # Multimodal split prompt injection across parts must be blocked
     res_multi = c1.post(

@@ -21,6 +21,7 @@ _LOOSE_RE = re.compile(
     rf"{_OPEN}(ID(?:[\s_]+[A-Za-z]+)+?|EMAIL|IP[\s_]+ADDRESS)[\s_]+(\d+)[\s_:\-]+([0-9a-f]{{{_NONCE_LEN}}})(?![0-9A-Za-z]){_CLOSE}",
     re.IGNORECASE,
 )
+_HINT_RE = re.compile(r"id|email|ip", re.IGNORECASE)
 
 # Longest realistic rewritten placeholder (&lt;ID_BPJS_KES_999_abcdef&gt; plus some spaces); used as stream hold-back.
 MAX_PLACEHOLDER_LEN = 64
@@ -60,6 +61,17 @@ def _canonical(m: re.Match) -> str:
     return f"<{entity}_{m.group(2)}_{m.group(3)}>".lower()
 
 
+def _restore_with_lookup(text: str, lookup: dict[str, str], legacy: tuple[tuple[str, str], ...]) -> str:
+    if not text:
+        return text
+    if lookup and _HINT_RE.search(text):
+        text = _LOOSE_RE.sub(lambda m: lookup.get(_canonical(m), m.group()), text)
+    for key, value in legacy:
+        if key in text:
+            text = text.replace(key, value)
+    return text
+
+
 def restore_tokens(text: str, mapping: dict[str, str]) -> str:
     """Put the original values back for every placeholder in ``text`` that belongs to ``mapping``.
 
@@ -70,11 +82,8 @@ def restore_tokens(text: str, mapping: dict[str, str]) -> str:
     if not mapping or not text:
         return text
     lookup = _lookup(mapping)
-    text = _LOOSE_RE.sub(lambda m: lookup.get(_canonical(m), m.group()), text)
-    for key, value in mapping.items():
-        if not _KEY_RE.match(key) and key in text:
-            text = text.replace(key, value)
-    return text
+    legacy = tuple((k, v) for k, v in mapping.items() if not _KEY_RE.match(k))
+    return _restore_with_lookup(text, lookup, legacy)
 
 
 class StreamDeanonymizer:
@@ -92,6 +101,8 @@ class StreamDeanonymizer:
 
     def __init__(self, mapping: dict[str, str], holdback: int = MAX_PLACEHOLDER_LEN) -> None:
         self.mapping = dict(mapping)
+        self._lookup = _lookup(self.mapping)
+        self._legacy = tuple((k, v) for k, v in self.mapping.items() if not _KEY_RE.match(k))
         self.holdback = holdback
         self._buf = ""
 
@@ -100,13 +111,14 @@ class StreamDeanonymizer:
             return chunk
         self._buf += chunk
         cut = max(0, len(self._buf) - self.holdback)
-        for m in _LOOSE_RE.finditer(self._buf):
-            if m.start() < cut < m.end():
-                cut = m.start()
-                break
+        if cut > 0 and _HINT_RE.search(self._buf):
+            for m in _LOOSE_RE.finditer(self._buf):
+                if m.start() < cut < m.end():
+                    cut = m.start()
+                    break
         ready, self._buf = self._buf[:cut], self._buf[cut:]
-        return restore_tokens(ready, self.mapping)
+        return _restore_with_lookup(ready, self._lookup, self._legacy)
 
     def flush(self) -> str:
         ready, self._buf = self._buf, ""
-        return restore_tokens(ready, self.mapping)
+        return _restore_with_lookup(ready, self._lookup, self._legacy)

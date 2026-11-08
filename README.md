@@ -196,9 +196,9 @@ Default **blocking**: `JUDOL_PINJOL`, `SARA_HATE_SPEECH`, `JAILBREAK`. `TOXIC_SL
 
 | Kata / payload | p50 | p95 | p99 | Throughput / core | Peak RSS |
 |---:|---:|---:|---:|---:|---:|
-| 100 | 0.19 ms | 0.23 ms | 0.25 ms | ~5.300 req/s | 29 MB |
-| 500 | 0.92 ms | 1.00 ms | 1.04 ms | ~1.100 req/s | 29 MB |
-| 1.000 | 1.77 ms | 1.88 ms | 1.95 ms | ~570 req/s | 29 MB |
+| 100 | 0.16 ms | 0.20 ms | 0.21 ms | ~6.250 req/s | 29 MB |
+| 500 | 0.74 ms | 0.81 ms | 0.84 ms | ~1.370 req/s | 29 MB |
+| 1.000 | 1.43 ms | 1.54 ms | 1.76 ms | ~700 req/s | 29 MB |
 
 Angka ini hasil satu mesin pengembangan. Jalankan benchmark di mesin target sebelum mengandalkannya; angka di CI (artifact `benchmark`) juga bisa dijadikan acuan.
 

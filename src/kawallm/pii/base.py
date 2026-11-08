@@ -64,6 +64,8 @@ def mentions_any(text: str, keywords: frozenset[str], text_lower: str | None = N
     if not keywords:
         return False
     low = text_lower if text_lower is not None else text.lower()
+    if len(keywords) <= 8:
+        return any(k in low for k in keywords)
     auto = _get_automaton(keywords)
     for _ in auto.iter(low):
         return True

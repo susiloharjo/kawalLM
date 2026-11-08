@@ -54,6 +54,8 @@ def split_landline(value: str) -> tuple[str, str] | None:
 
 
 def find_landline(text: str) -> list[PIIMatch]:
+    if "0" not in text and "62" not in text:
+        return []
     out = []
     for m in PAREN_RE.finditer(text) if "(" in text else ():
         area = re.match(r"\((0\d+)\)", m.group()).group(1)

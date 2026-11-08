@@ -106,7 +106,7 @@ _HOMOGLYPH_TABLE = str.maketrans(
 
 # Dictionary terms that genuinely contain digits and must not have their tail digits split.
 _KEEP_TERMS = frozenset({"slot88"})
-_TAIL_RE = re.compile(r"\b([a-z]{4,})(\d+)\b")
+_TAIL_RE = re.compile(r"\d(?<=[a-z]{4}.)\d*\b")
 
 
 def _deleet_all(t: str) -> str:
@@ -138,10 +138,14 @@ def _deleet_all(t: str) -> str:
 
 def _split_tail_digits(t: str) -> str:
     def _repl(m: re.Match) -> str:
-        w = m.group()
-        if w in _KEEP_TERMS:
-            return w
-        return f"{m.group(1)} {m.group(2)}"
+        i = m.start()
+        while i > 0 and "a" <= t[i - 1] <= "z":
+            i -= 1
+        if i > 0 and t[i - 1].isalnum():
+            return m.group()
+        if t[i : m.end()] in _KEEP_TERMS:
+            return m.group()
+        return f" {m.group()}"
 
     return _TAIL_RE.sub(_repl, t)
 

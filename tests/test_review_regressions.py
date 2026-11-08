@@ -427,3 +427,48 @@ async def test_json_depth_just_under_the_limit_still_works():
     d = {"messages": [{"role": "assistant", "content": None, "tool_calls": [{"function": {"arguments": args}}]}]}
     await g.async_pre_call_hook(None, None, d, "completion")
     assert NIK not in d["messages"][0]["tool_calls"][0]["function"]["arguments"]
+
+
+async def test_two_complete_values_in_adjacent_parts_are_both_masked():
+    """Each part holds a complete NIK; concatenated they form one long digit run, so both must still be found."""
+    g = G()
+    d = {
+        "messages": [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "3171011501900001"}, {"type": "text", "text": "3171015501920002"}],
+            }
+        ]
+    }
+    await g.async_pre_call_hook(None, None, d, "completion")
+    out = [p["text"] for p in d["messages"][0]["content"]]
+    assert out == ["<ID_NIK>", "<ID_NIK>"]
+
+
+async def test_restored_value_with_newline_keeps_tool_arguments_valid_json():
+    g = G(masking_mode="reversible")
+    d = {"litellm_call_id": "nl", "messages": [{"role": "user", "content": "hubungi 0812\n34567890"}]}
+    await g.async_pre_call_hook(None, None, d, "completion")
+    tok = d["messages"][0]["content"].split()[-1]
+    resp = NS(choices=[NS(message=NS(content=None, tool_calls=[NS(function=NS(arguments=json.dumps({"hp": tok})))]))])
+    out = await g.async_post_call_success_hook(d, None, resp)
+    args = out.choices[0].message.tool_calls[0].function.arguments
+    assert json.loads(args) == {"hp": "0812\n34567890"}
+
+
+async def test_held_text_is_released_before_the_finish_reason():
+    g = G()
+
+    async def gen():
+        yield chunk("Jawaban pendek yang masih tertahan di buffer")
+        yield NS(choices=[NS(index=0, finish_reason="stop", delta=NS(content="", tool_calls=None))])
+        yield NS(choices=[])  # usage-only chunk
+
+    seq = []
+    async for c in g.async_post_call_streaming_iterator_hook(None, gen(), {}):
+        for ch in c.choices:
+            seq.append((ch.finish_reason, ch.delta.content or ""))
+    text = "".join(content for _, content in seq)
+    assert text == "Jawaban pendek yang masih tertahan di buffer"
+    stop_at = next(i for i, (fr, _) in enumerate(seq) if fr == "stop")
+    assert "".join(content for _, content in seq[stop_at + 1 :]) == ""  # nothing after the stop marker

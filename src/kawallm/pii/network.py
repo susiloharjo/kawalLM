@@ -18,8 +18,8 @@ import re
 
 from .base import PIIMatch
 
-# No leading lookbehind (it defeats the regex engine's first-character scan); the boundary is checked in Python.
-IPV4_RE = re.compile(r"\d{1,3}(?:\.\d{1,3}){3}(?!\d)")
+# Starts with literal '.' so the C regex engine uses fast byte search (memchr) instead of scanning every digit.
+IPV4_RE = re.compile(r"\.(?<=\d.)\d{1,3}\.\d{1,3}\.\d{1,3}(?!\d)")
 IPV6_RE = re.compile(r"[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}(?![0-9A-Fa-f:])")
 _VERSION_BEFORE = re.compile(r"(?<![a-z])(?:v|ver|versi|version)\s*$")  # whole word, so "server" does not count
 
@@ -30,16 +30,21 @@ def _starts_inside_token(text: str, start: int) -> bool:
 
 def find_ip(text: str) -> list[PIIMatch]:
     out = []
-    for m in IPV4_RE.finditer(text):
-        if _starts_inside_token(text, m.start()):
-            continue
-        if _VERSION_BEFORE.search(text[max(0, m.start() - 8) : m.start()].lower()):
-            continue
-        try:
-            ipaddress.IPv4Address(m.group())
-        except ValueError:
-            continue
-        out.append(PIIMatch("IP_ADDRESS", m.start(), m.end(), m.group(), 0.9, {"version": 4}))
+    if "." in text:
+        for m in IPV4_RE.finditer(text):
+            start = m.start()
+            while start > 0 and text[start - 1].isdigit():
+                start -= 1
+            if not (1 <= m.start() - start <= 3) or _starts_inside_token(text, start):
+                continue
+            if _VERSION_BEFORE.search(text[max(0, start - 8) : start].lower()):
+                continue
+            val = text[start : m.end()]
+            try:
+                ipaddress.IPv4Address(val)
+            except ValueError:
+                continue
+            out.append(PIIMatch("IP_ADDRESS", start, m.end(), val, 0.9, {"version": 4}))
     if "::" in text or text.count(":") >= 7:
         for m in IPV6_RE.finditer(text):
             value = m.group()

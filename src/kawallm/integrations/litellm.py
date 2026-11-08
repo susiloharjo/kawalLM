@@ -31,6 +31,7 @@ import json
 import re
 import uuid
 from collections import Counter
+from dataclasses import replace
 from typing import Any
 
 from fastapi import HTTPException
@@ -38,7 +39,8 @@ from litellm.integrations.custom_guardrail import CustomGuardrail
 
 from kawallm.audit import AuditLog, JsonlFileSink, logging_sink
 from kawallm.core import KawalLMEngine
-from kawallm.placeholders import _LOOSE_RE
+from kawallm.pii.base import resolve_overlaps
+from kawallm.placeholders import _LOOSE_RE, restore_tokens
 
 _SESSION_KEY = "kawallm_session"
 _HOLDBACK = 64  # >= kawallm.placeholders.MAX_PLACEHOLDER_LEN
@@ -266,7 +268,9 @@ class KawalLMGuardrail(CustomGuardrail):
         if self.mask_output:
             args = self._mask_arguments(args, None, False, counts, self._output_mode)
         if self._restores(sid):
-            args = self.engine.unmask(args, sid)
+            # Escape the value for a JSON string, so a restored value with a newline stays valid JSON.
+            escaped = {k: json.dumps(v)[1:-1] for k, v in self.engine.vault.mapping(sid).items()}
+            args = restore_tokens(args, escaped)
         return args
 
     @property
@@ -350,7 +354,14 @@ class KawalLMGuardrail(CustomGuardrail):
             return
         texts = [p["text"] for p in parts]
         joined = "".join(texts)
-        matches = self.engine.detect(joined)
+        # Joined detection finds values split across parts; per-part detection finds values that the concatenation
+        # glues into a longer digit run (e.g. two complete NIKs back to back).
+        candidates = list(self.engine.detect(joined))
+        offset = 0
+        for text in texts:
+            candidates += [replace(m, start=m.start + offset, end=m.end + offset) for m in self.engine.detect(text)]
+            offset += len(text)
+        matches = resolve_overlaps(candidates)
         if not matches:
             return
         mode = self.engine.mode
@@ -424,6 +435,16 @@ class KawalLMGuardrail(CustomGuardrail):
                     and self._tool_args_need_processing
                 ):
                     st.hold_function_call(fc)
+                if getattr(choice, "finish_reason", None) is not None:
+                    # Release what is still held into this chunk, before its finish_reason reaches the client.
+                    tail, extras, legacy = st.finish()
+                    if tail:
+                        delta.content = (getattr(delta, "content", None) or "") + tail
+                    if extras:
+                        delta.tool_calls = [*(getattr(delta, "tool_calls", None) or []), *extras]
+                    if legacy is not None:
+                        delta.function_call = legacy
+                    states.pop(getattr(choice, "index", 0) or 0, None)
             if pending is not None:
                 yield pending
             pending = chunk
@@ -505,8 +526,11 @@ class _ChoiceStream:
         """
         off = len(self.context)
         combined = self.context + buf
+        detected = self.guard.engine.detect(combined)
+        if not detected:
+            return cut
         while cut > 0:
-            crossing = [m for m in self.guard.engine.detect(combined) if m.start < off + cut < m.end]
+            crossing = [m for m in detected if m.start < off + cut < m.end]
             if not crossing:
                 break
             start = min(m.start for m in crossing) - off

@@ -43,8 +43,9 @@ def phone_operator(value: str) -> str | None:
 
 def find_phone(text: str) -> list[PIIMatch]:
     out = []
-    for m in PHONE_RE.finditer(text):
-        op = phone_operator(m.group())
-        if op:
-            out.append(PIIMatch("ID_PHONE", m.start(), m.end(), m.group(), 1.0, {"operator": op}))
+    if "8" in text:
+        for m in PHONE_RE.finditer(text):
+            op = phone_operator(m.group())
+            if op:
+                out.append(PIIMatch("ID_PHONE", m.start(), m.end(), m.group(), 1.0, {"operator": op}))
     return out + find_landline(text)

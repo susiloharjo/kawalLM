@@ -38,6 +38,8 @@ EDUCATIONAL_WORDS = frozenset(
     "jelaskan bahaya dampak edukasi mencegah cegah hindari waspada laporkan melaporkan mengapa kenapa penelitian".split()
 )
 
+_EDU_SENTINEL = -1
+
 CATEGORY_LABELS = {
     "TOXIC_SLANG": "kata kasar / umpatan",
     "JUDOL_PINJOL": "promosi judi online / pinjol ilegal",
@@ -153,6 +155,13 @@ class SafetyScanner:
                     existing[1].append(idx)
 
         if self._has_automaton:
+            for edu in EDUCATIONAL_WORDS:
+                key = f" {edu} "
+                existing = self._automaton.get(key, None)
+                if existing is None:
+                    self._automaton.add_word(key, ([], [_EDU_SENTINEL]))
+                elif _EDU_SENTINEL not in existing[1]:
+                    existing[1].append(_EDU_SENTINEL)
             self._automaton.make_automaton()
 
     def scan(self, text: str) -> SafetyResult:
@@ -168,12 +177,12 @@ class SafetyScanner:
                     raw_hits.extend(payloads)
                 if rule_idxs:
                     triggered.update(rule_idxs)
+            has_edu = _EDU_SENTINEL in triggered
+            triggered.discard(_EDU_SENTINEL)
             if raw_hits:
                 # Educational / reporting context: ambiguous words (weight < 1) count half, so "jelaskan bahaya
                 # judi online dan pinjol" passes while strong promotional phrases (weight >= 1) still block.
-                educational = any(w < 1.0 for _, _, w, _ in raw_hits) and any(
-                    f" {w} " in norm for w in EDUCATIONAL_WORDS
-                )
+                educational = has_edu and any(w < 1.0 for _, _, w, _ in raw_hits)
                 for cat, term, w, src in raw_hits:
                     hits.append(Hit(cat, term, w * 0.5 if educational and w < 1.0 else w, src))
         for idx in sorted(triggered):

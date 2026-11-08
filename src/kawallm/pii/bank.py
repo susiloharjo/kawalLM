@@ -49,7 +49,8 @@ _WORD_RE = re.compile(r"[A-Za-z]+")
 
 
 def find_bank_account(text: str, window: int = 5, text_lower: str | None = None) -> list[PIIMatch]:
-    if not mentions_any(text, _ALL_KEYWORDS, text_lower=text_lower):
+    low = text_lower if text_lower is not None else text.lower()
+    if not mentions_any(text, _ALL_KEYWORDS, text_lower=low):
         return []
     out = []
     for m in ACCOUNT_RE.finditer(text):
@@ -60,8 +61,11 @@ def find_bank_account(text: str, window: int = 5, text_lower: str | None = None)
         n = len(digits_only(raw))
         if n not in GENERIC_LENGTHS:
             continue
-        before = _WORD_RE.findall(text[max(0, m.start() - 120) : m.start()].lower())[-window:]
-        after = _WORD_RE.findall(text[m.end() : m.end() + 120].lower())[:window]
+        span_low = low[max(0, m.start() - 120) : m.end() + 120]
+        if not mentions_any(span_low, _ALL_KEYWORDS, text_lower=span_low):
+            continue
+        before = _WORD_RE.findall(low[max(0, m.start() - 120) : m.start()])[-window:]
+        after = _WORD_RE.findall(low[m.end() : m.end() + 120])[:window]
         nearby: list[str] = []
         n_b = len(before)
         for i in range(n_b - 1, -1, -1):
