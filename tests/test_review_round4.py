@@ -142,3 +142,78 @@ async def test_nan_in_arguments_is_not_rewritten_into_invalid_json():
     out = await _args(_guard(), f'{{"x":NaN,"nik":"{NIK}"}}')
     assert NIK not in out  # still masked as plain text, and the input's own NaN is not turned into Infinity
     assert "Infinity" not in out
+
+
+# ---------------------------------------------------------------- 5. stream thinking, checked with LiteLLM's assembler
+def _thinking_chunk(blocks, finish=None):
+    types = pytest.importorskip("litellm.types.utils")
+    delta = types.Delta(content=None, thinking_blocks=blocks)
+    return types.ModelResponseStream(choices=[types.StreamingChoices(index=0, finish_reason=finish, delta=delta)])
+
+
+async def _assembled_thinking(g, inputs):
+    """Run the stream through the guardrail, then rebuild the message the way LiteLLM does for a client."""
+    pytest.importorskip("litellm")
+    from litellm.litellm_core_utils.streaming_chunk_builder_utils import ChunkProcessor
+
+    async def gen():
+        for c in inputs:
+            yield c
+
+    emitted = [c.model_dump() async for c in g.async_post_call_streaming_iterator_hook(None, gen(), {})]
+    return ChunkProcessor(emitted).get_combined_thinking_content(emitted)
+
+
+async def test_two_thinking_blocks_with_the_same_number_are_masked_separately():
+    inputs = [
+        _thinking_chunk([{"type": "thinking", "thinking": f"NIK {NIK}", "signature": None, "index": 0}]),
+        _thinking_chunk([{"type": "thinking", "thinking": "", "signature": "sig-a", "index": 0}]),
+        _thinking_chunk([{"type": "thinking", "thinking": f"NIK {NIK}", "signature": None, "index": 1}]),
+        _thinking_chunk([{"type": "thinking", "thinking": "", "signature": "sig-b", "index": 1}]),
+        _thinking_chunk([], "stop"),
+    ]
+    blocks = await _assembled_thinking(_guard(), inputs)
+    assert [(b["thinking"], b["signature"]) for b in blocks] == [("NIK <ID_NIK>", "sig-a"), ("NIK <ID_NIK>", "sig-b")]
+
+
+@pytest.mark.parametrize("size", [1, 4, 9])
+async def test_a_block_split_over_chunks_keeps_its_text_and_signature_together(size):
+    text = f"Pikir: NIK {NIK} lalu rekening BCA 1234567890 selesai " + "x " * 20
+    inputs = [
+        _thinking_chunk([{"type": "thinking", "thinking": text[i : i + size], "signature": None, "index": 0}])
+        for i in range(0, len(text), size)
+    ]
+    inputs.append(_thinking_chunk([{"type": "thinking", "thinking": "", "signature": "sig-x", "index": 0}]))
+    inputs.append(_thinking_chunk([], "stop"))
+    blocks = await _assembled_thinking(_guard(), inputs)
+    assert [b["signature"] for b in blocks] == ["sig-x"]
+    assert blocks[0]["thinking"] == KawalLM().scan(text).sanitized_text
+
+
+async def test_signature_arriving_after_clean_text_still_reaches_the_client_with_its_text():
+    inputs = [
+        _thinking_chunk([{"type": "thinking", "thinking": "hitung dulu", "signature": None, "index": 0}]),
+        _thinking_chunk([{"type": "thinking", "thinking": "", "signature": "sig-clean", "index": 0}]),
+        _thinking_chunk([], "stop"),
+    ]
+    blocks = await _assembled_thinking(_guard(), inputs)
+    assert blocks == [{"type": "thinking", "thinking": "hitung dulu", "signature": "sig-clean"}]
+
+
+async def test_unsigned_thinking_text_at_the_end_of_a_stream_is_still_masked():
+    inputs = [
+        _thinking_chunk([{"type": "thinking", "thinking": f"NIK {NIK}", "signature": None, "index": 0}]),
+        _thinking_chunk([], "stop"),
+    ]
+    g = _guard()
+
+    async def gen():
+        for c in inputs:
+            yield c
+
+    text = "".join(
+        b["thinking"]
+        for c in [x async for x in g.async_post_call_streaming_iterator_hook(None, gen(), {})]
+        for b in (getattr(c.choices[0].delta, "thinking_blocks", None) or [])
+    )
+    assert NIK not in text and text == "NIK <ID_NIK>"

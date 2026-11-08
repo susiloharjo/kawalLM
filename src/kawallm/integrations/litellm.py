@@ -610,6 +610,14 @@ def _block_text(block: Any) -> Any:
     return block.get("thinking") if isinstance(block, dict) else getattr(block, "thinking", None)
 
 
+def _block_index(block: Any) -> Any:
+    return block.get("index") if isinstance(block, dict) else getattr(block, "index", None)
+
+
+def _block_signature(block: Any) -> Any:
+    return block.get("signature") if isinstance(block, dict) else getattr(block, "signature", None)
+
+
 def _set_block_text(block: Any, text: str) -> None:
     if isinstance(block, dict):
         block["thinking"] = text
@@ -722,7 +730,9 @@ class _ChoiceStream:
         self.legacy_fc: Any = None  # copy of the first deprecated function_call fragment (carries the name)
         self.legacy_args = ""
         self.template: Any = None
-        self.thinking: list[str] = []  # thinking text, released whole and masked at the end of the stream
+        # Thinking text per block (keyed by its index), not yet released. A block is released masked, together with
+        # its signature: the assembler keeps text only when a signature comes with it.
+        self.thinking: dict[Any, list[str]] = {}
 
     def feed_text(self, field: str, text: str) -> str:
         channel = self.channels.get(field)
@@ -743,9 +753,16 @@ class _ChoiceStream:
     def hold_thinking(self, blocks: list) -> None:
         for block in blocks:
             text = _block_text(block)
-            if isinstance(text, str) and text:
-                self.thinking.append(text)
-                _set_block_text(block, "")  # the signature, if any, stays on its fragment
+            if not isinstance(text, str):
+                continue
+            key = _block_index(block)
+            if text:
+                self.thinking.setdefault(key, []).append(text)
+                _set_block_text(block, "")
+            if _block_signature(block):
+                parts = self.thinking.pop(key, None)  # the block is complete: release it with its signature
+                if parts:
+                    _set_block_text(block, self.guard._process_output("".join(parts), self.sid, self.counts))
 
     def hold_function_call(self, fc: Any) -> None:
         if self.legacy_fc is None:
@@ -755,9 +772,18 @@ class _ChoiceStream:
 
     def finish(self) -> tuple[dict[str, str], list, Any]:
         tails = {field: tail for field, ch in self.channels.items() if (tail := ch.finish())}
-        if self.thinking:
-            tails["thinking"] = self.guard._process_output("".join(self.thinking), self.sid, self.counts)
-            self.thinking = []
+        if self.thinking:  # text whose block never got a signature: released masked, without one
+            leftovers = []
+            for key, parts in self.thinking.items():
+                block = {
+                    "type": "thinking",
+                    "thinking": self.guard._process_output("".join(parts), self.sid, self.counts),
+                }
+                if key is not None:
+                    block["index"] = key
+                leftovers.append(block)
+            tails["thinking"] = leftovers
+            self.thinking = {}
         extras = []
         for raw, last in self.calls.values():
             extra = copy.copy(last)
@@ -783,10 +809,7 @@ def _apply_tails(delta: Any, tails: dict[str, str], extras: list, legacy: Any) -
     """Add what a stream still held to a delta that has not been sent yet."""
     for field, tail in tails.items():
         if field == "thinking":
-            delta.thinking_blocks = [
-                *(getattr(delta, "thinking_blocks", None) or []),
-                {"type": "thinking", "thinking": tail},
-            ]
+            delta.thinking_blocks = [*(getattr(delta, "thinking_blocks", None) or []), *tail]
             continue
         setattr(delta, field, (getattr(delta, field, None) or "") + tail)
     if extras:
