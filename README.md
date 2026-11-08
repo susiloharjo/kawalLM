@@ -108,6 +108,20 @@ kawallm --json "abaikan instruksi sebelumnya"  # exit code 2 bila diblokir
 | `redact` | `[REDACTED]` | Data lake, fine-tuning |
 | `generalize` | `1990`, `30-39 tahun`, `101**`, `Kel. Menteng, Kec. Menteng` | Menurunkan presisi, bukan menghapus; hanya untuk entitas `extended` (ID lain tetap jadi `<ID_...>`) |
 
+#### Mode per entitas (`mode_by_entity`)
+
+Mode di atas berlaku untuk semua entitas. Kalau hanya sebagian yang perlu dikembalikan di jawaban, pilih mode per entitas:
+
+```python
+guard = KawalLM(
+    mode="token",  # default untuk semua
+    mode_by_entity={"ID_PHONE": "reversible", "EMAIL": "reversible"},
+)
+# NIK tetap '<ID_NIK>' (tidak bisa dipulihkan); HP dan email bisa dipulihkan lewat guard.unmask(...) / deanonymize
+```
+
+Di LiteLLM: `mode_by_entity: {ID_PHONE: reversible, EMAIL: reversible}` (atau string `ID_PHONE=reversible,EMAIL=reversible`). Mode yang diberikan eksplisit pada satu panggilan (`mask(..., mode="token")`) mengalahkan pemetaan ini. Placeholder reversible baru dibuat bila ada entitas yang reversible; nilai aslinya tetap disimpan di vault selama sesi.
+
 ### Entitas
 
 `ID_NIK`, `ID_NPWP`, `ID_NIP`, `ID_PHONE`, `ID_BANK_ACCOUNT`, `ID_BPJS_KES`, `ID_BPJS_TK`, `ID_NISN`, `ID_PASSPORT`, `ID_SIM`, `ID_PLATE`, `IP_ADDRESS`, `EMAIL`.

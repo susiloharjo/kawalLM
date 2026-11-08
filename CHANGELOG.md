@@ -8,7 +8,11 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikut
 - Profil `extended` (opt-in, `entities="extended"`): quasi-identifier `ID_BIRTHDATE`, `ID_AGE`, `ID_POSTAL_CODE`, `ID_ADDRESS`, `GEO_COORDINATES`. Setiap entitas membutuhkan label atau penanda struktural untuk menjaga false positive tetap rendah. Perilaku default tidak berubah.
 - Mode masking `generalize`: menurunkan presisi (tanggal lahir menjadi tahun, usia menjadi rentang, kode pos 3 digit, alamat menjadi wilayahnya, koordinat dibulatkan). Entitas tanpa generalisasi menjadi token biasa.
 - `entities=` menerima nama profil (`core`, `extended`) atau daftar dipisah koma; `kawallm.pii.expand_entities`, `PROFILES`, `QUASI_ENTITIES`.
+- `mode_by_entity`: mode masking berbeda per entitas (mis. HP dan email reversible, NIK token). Di `KawalLMEngine`/`KawalLM`, guardrail LiteLLM (`mode_by_entity`, dict atau string `ID_PHONE=reversible,EMAIL=redact`), dan middleware FastAPI. Mode eksplisit pada satu panggilan mengalahkan pemetaan. Nama entitas dan mode divalidasi saat konstruksi; `reversible_enabled` dan `mode_for()` tersedia di engine.
 - Audit log: field `flags` dengan `combined_quasi_identifiers` bila satu request memuat dua atau lebih jenis quasi-identifier. Hanya jumlah, tanpa nilai.
+
+### Fixed
+- Middleware FastAPI: dua nilai lengkap di text part yang berdekatan (mis. dua NIK) kini keduanya termask; sebelumnya penggabungan membuat keduanya menjadi satu rangkaian digit panjang yang tidak cocok.
 
 ## [0.2.3] - 2026-11-08
 

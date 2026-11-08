@@ -53,6 +53,7 @@ Parameter lengkap:
 | `threshold` | `1.0` | Skor minimum per kategori untuk blokir |
 | `block_status_code` | `400` | Bisa diganti `403` |
 | `validate_wilayah` | `true` | `false` = NIK hanya dicek tanggal lahir + serial |
+| `mode_by_entity` | tidak ada | Mode berbeda per entitas, mis. `{ID_PHONE: reversible, EMAIL: reversible}` atau `ID_PHONE=reversible,EMAIL=reversible`. Entitas yang tidak disebut memakai `masking_mode`. |
 | `audit_log` | `false` | `true` = tulis event audit ke logger Python `kawallm.audit` (satu baris JSON per request) |
 | `audit_file` | tidak ada | Path file JSONL tujuan event audit (mengaktifkan audit walau `audit_log` mati) |
 | `audit_include_clean` | `true` | `false` = jangan catat request yang tidak dimaskir/diblokir (mengurangi volume) |

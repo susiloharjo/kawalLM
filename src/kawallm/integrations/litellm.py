@@ -58,6 +58,18 @@ def _as_bool(v: Any) -> bool:
     return bool(v)
 
 
+def _as_mapping(v: Any) -> dict[str, str] | None:
+    """``{"ID_PHONE": "reversible"}`` from YAML, or the string form ``"ID_PHONE=reversible,EMAIL=reversible"``."""
+    if not v:
+        return None
+    if isinstance(v, str):
+        pairs = [part.split("=", 1) for part in v.split(",") if part.strip()]
+        if any(len(pair) != 2 for pair in pairs):
+            raise ValueError(f"mode_by_entity must look like 'ID_PHONE=reversible,EMAIL=reversible', got {v!r}")
+        return {k.strip(): val.strip() for k, val in pairs}
+    return dict(v)
+
+
 def _as_list(v: Any) -> list[str]:
     if v is None:
         return []
@@ -85,6 +97,7 @@ class KawalLMGuardrail(CustomGuardrail):
         audit_file: str | None = None,
         audit_include_clean: bool = True,
         audit_include_user: bool = False,
+        mode_by_entity: dict[str, str] | str | None = None,
         **kwargs: Any,
     ) -> None:
         if block_safety_violations is not None:  # alias used in older docs
@@ -94,6 +107,7 @@ class KawalLMGuardrail(CustomGuardrail):
             block_violations=_as_bool(block_violations),
             validate_wilayah=_as_bool(validate_wilayah),
             mode=masking_mode,
+            mode_by_entity=_as_mapping(mode_by_entity),
             entities=_as_list(entities) or None,
             block_categories=_as_list(block_categories) or ("JUDOL_PINJOL", "SARA_HATE_SPEECH", "JAILBREAK"),
             threshold=float(threshold),
@@ -288,7 +302,7 @@ class KawalLMGuardrail(CustomGuardrail):
         return "redact" if self.engine.mode == "redact" else "token"
 
     def _restores(self, sid: str | None) -> bool:
-        return bool(sid) and self.restore_output and self.engine.mode == "reversible"
+        return bool(sid) and self.restore_output and self.engine.reversible_enabled
 
     def _process_output(self, text: str, sid: str | None, counts: Counter | None = None, context: str = "") -> str:
         if self.mask_output:
@@ -310,7 +324,7 @@ class KawalLMGuardrail(CustomGuardrail):
 
     @property
     def _tool_args_need_processing(self) -> bool:
-        return self.mask_output or (self.restore_output and self.engine.mode == "reversible")
+        return self.mask_output or (self.restore_output and self.engine.reversible_enabled)
 
     # ------------------------------------------------------------ pre-call
     async def async_pre_call_hook(
@@ -323,7 +337,7 @@ class KawalLMGuardrail(CustomGuardrail):
         messages = data.get("messages")
         if not messages:
             return data
-        sid = self._session(data, self.engine.mode == "reversible", user_api_key_dict)
+        sid = self._session(data, self.engine.reversible_enabled, user_api_key_dict)
         counts: Counter = Counter()
         started = time.time()
         try:
@@ -402,8 +416,7 @@ class KawalLMGuardrail(CustomGuardrail):
         matches = resolve_overlaps(candidates)
         if not matches:
             return
-        mode = self.engine.mode
-        pairs = [(m, self.engine._replacement(m, sid, mode)) for m in matches]
+        pairs = [(m, self.engine._replacement(m, sid, self.engine.mode_for(m.entity))) for m in matches]
         counts.update(m.entity for m in matches)
         start = 0
         for part, text in zip(parts, texts, strict=True):

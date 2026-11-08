@@ -10,12 +10,28 @@ from dataclasses import dataclass, field, replace
 from typing import Protocol, runtime_checkable
 
 from .audit import AuditLog, AuditSink, as_audit_log
-from .pii import ALL_ENTITIES, PIIMatch, detect_pii, expand_entities
+from .pii import ALL_ENTITIES, DETECTORS, PIIMatch, detect_pii, expand_entities
+from .pii.base import PRIORITY
 from .pii.quasi import GENERALIZERS
 from .placeholders import StreamDeanonymizer, assign_token, restore_tokens
 from .safety import SafetyResult, SafetyScanner
 
 MASK_MODES = ("token", "redact", "partial", "reversible", "generalize")
+
+
+def _validate_mode_by_entity(mapping: Mapping[str, str] | None) -> dict[str, str]:
+    """``{"ID_PHONE": "reversible", ...}`` checked against the known entity names and mask modes."""
+    if not mapping:
+        return {}
+    known = {*PRIORITY, *DETECTORS}
+    out: dict[str, str] = {}
+    for entity, mode in dict(mapping).items():
+        if entity not in known:
+            raise ValueError(f"unknown entity {entity!r} in mode_by_entity; expected one of {sorted(known)}")
+        if mode not in MASK_MODES:
+            raise ValueError(f"mode_by_entity[{entity!r}] must be one of {MASK_MODES}, got {mode!r}")
+        out[entity] = mode
+    return out
 
 
 @dataclass
@@ -98,12 +114,14 @@ class KawalLMEngine:
         validate_wilayah: bool = True,
         audit: AuditLog | AuditSink | None = None,
         vault: VaultBackend | None = None,
+        mode_by_entity: Mapping[str, str] | None = None,
     ) -> None:
         if mode not in MASK_MODES:
             raise ValueError(f"mode must be one of {MASK_MODES}")
         self.mask_pii_enabled = mask_pii
         self.block_violations = block_violations
         self.mode = mode
+        self.mode_by_entity = _validate_mode_by_entity(mode_by_entity)
         self.entities = expand_entities(entities) if entities else ALL_ENTITIES
         self.redact_text = redact_text
         self.validate_wilayah = validate_wilayah
@@ -129,6 +147,15 @@ class KawalLMEngine:
     # ---------------- PII ----------------
     def detect(self, text: str) -> list[PIIMatch]:
         return detect_pii(text, self.entities, check_region=self.validate_wilayah)
+
+    @property
+    def reversible_enabled(self) -> bool:
+        """True when any entity is masked reversibly (the engine mode, or an entry of ``mode_by_entity``)."""
+        return self.mode == "reversible" or "reversible" in self.mode_by_entity.values()
+
+    def mode_for(self, entity: str, mode: str | None = None) -> str:
+        """Mask mode of one entity: an explicit ``mode`` wins, then ``mode_by_entity``, then the engine mode."""
+        return mode or self.mode_by_entity.get(entity) or self.mode
 
     def _replacement(self, m: PIIMatch, session_id: str | None, mode: str) -> str:
         if mode == "reversible":
@@ -162,10 +189,11 @@ class KawalLMEngine:
         number in ``text``; it is neither returned nor masked, and values that straddle the boundary are left
         to the caller that owns the earlier text.
         """
-        mode = mode or self.mode
+        explicit = mode  # an explicit mode applies to every entity and replaces mode_by_entity for this call
         if not self.mask_pii_enabled or not text:
             return MaskResult(text, [], session_id)
-        if mode == "reversible" and session_id is None:
+        needs_session = explicit == "reversible" or (explicit is None and self.reversible_enabled)
+        if needs_session and session_id is None:
             session_id = uuid.uuid4().hex
         offset = len(context)
         matches = self.detect(context + text) if context else self.detect(text)
@@ -176,7 +204,7 @@ class KawalLMEngine:
         parts, last = [], 0
         for m in matches:
             parts.append(text[last : m.start])
-            parts.append(self._replacement(m, session_id, mode))
+            parts.append(self._replacement(m, session_id, self.mode_for(m.entity, explicit)))
             last = m.end
         parts.append(text[last:])
         return MaskResult("".join(parts), matches, session_id)
@@ -207,7 +235,11 @@ class KawalLMEngine:
         parts, last = [], 0
         for m in self.detect(text):
             parts.append(text[last : m.start])
-            parts.append(assign_token(fwd, rev, m.entity, m.text))
+            other = self.mode_by_entity.get(m.entity)
+            if other and other != "reversible":  # this entity is configured not to be restorable
+                parts.append(self._replacement(m, None, other))
+            else:
+                parts.append(assign_token(fwd, rev, m.entity, m.text))
             last = m.end
         parts.append(text[last:])
         return "".join(parts), fwd

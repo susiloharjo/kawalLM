@@ -17,12 +17,14 @@ import json
 import uuid
 from collections import Counter
 from collections.abc import Iterable
+from dataclasses import replace
 from typing import Any
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from kawallm.audit import AuditLog, AuditSink, as_audit_log
 from kawallm.core import KawalLMEngine
+from kawallm.pii.base import resolve_overlaps
 
 
 class KawalLMMiddleware:
@@ -61,12 +63,18 @@ class KawalLMMiddleware:
             return
         texts = [p["text"] for p in parts]
         joined = "".join(texts)
-        matches = self.engine.detect(joined)
+        # Joined detection finds values split across parts; per-part detection finds values that the concatenation
+        # glues into a longer digit run (e.g. two complete NIKs back to back).
+        candidates = list(self.engine.detect(joined))
+        offset = 0
+        for text in texts:
+            candidates += [replace(m, start=m.start + offset, end=m.end + offset) for m in self.engine.detect(text)]
+            offset += len(text)
+        matches = resolve_overlaps(candidates)
         if not matches:
             return
-        mode = self.engine.mode
-        sid = uuid.uuid4().hex if mode == "reversible" else None
-        pairs = [(m, self.engine._replacement(m, sid, mode)) for m in matches]
+        sid = uuid.uuid4().hex if self.engine.reversible_enabled else None
+        pairs = [(m, self.engine._replacement(m, sid, self.engine.mode_for(m.entity))) for m in matches]
         counts.update(m.entity for m in matches)
         state[0] = True
         start = 0
