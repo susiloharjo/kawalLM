@@ -1,6 +1,6 @@
 # KawalLM 🇮🇩
 
-[![PyPI](https://img.shields.io/pypi/v/kawallm.svg?v=0.2.3)](https://pypi.org/project/kawallm/)
+[![PyPI](https://img.shields.io/pypi/v/kawallm.svg?v=0.3.0)](https://pypi.org/project/kawallm/)
 [![Python](https://img.shields.io/pypi/pyversions/kawallm.svg)](https://pypi.org/project/kawallm/)
 [![CI](https://github.com/susiloharjo/kawalLM/actions/workflows/ci.yml/badge.svg)](https://github.com/susiloharjo/kawalLM/actions/workflows/ci.yml)
 [![License](https://img.shields.io/pypi/l/kawallm.svg)](LICENSE)
@@ -24,6 +24,7 @@ KawalLM memaskir PII lokal (NIK, NPWP, NIP, No. HP, rekening bank, BPJS, NISN, p
 | No. HP & telepon rumah | Generic | Prefix operator (Telkomsel, Indosat, Tri, XL, Axis, Smartfren); telepon rumah `(021) 5551234`, `021-5551234`, `+62 21 5551234` dengan kode area valid |
 | NIP (PNS) | Tidak ada | 18 digit divalidasi tanggal lahir, bulan pengangkatan (usia ≥ 17), dan gender |
 | NISN, paspor, SIM | Tidak ada | Format + kata kunci di dekat nomor (tanpa checksum publik, jadi resi/barcode tidak ikut termaskir) |
+| Quasi-identifier (opt-in) | Tidak ada | Tanggal lahir, usia, kode pos, alamat, koordinat GPS dengan label atau penanda; bisa digeneralisasi (tahun, rentang, wilayah) |
 | Rekening bank | Tidak ada | Proximity 5 kata + panjang per bank (BCA 10, Mandiri 13, BRI 15, …) |
 | Judol / pinjol | Tidak paham "g4c0r", "s.l.o.t", "depo pulsa" | Aho-Corasick + normalisasi leetspeak/spasi + skor berbobot |
 | Prompt injection ID | Fokus Bahasa Inggris | Rule "abaikan instruksi sebelumnya", "bocorkan system prompt", DAN, dll. |
@@ -172,6 +173,15 @@ guardrails:
 | `post_call` | PII baru dari model dimaskir (*output leakage*), lalu placeholder `<ID_X_n_nonce>` milik pemanggil dikembalikan (reversible). Argumen `tool_calls` dan `function_call`, termasuk streaming, juga diproses dengan aturan yang sama. |
 | streaming | Sama, dengan *hold-back buffer* 64 karakter agar nilai yang terpotong antar chunk tetap tertangkap. |
 
+**Dashboard dan logging LiteLLM.** Hasil tiap request (`success` atau `guardrail_intervened`, jumlah entitas per jenis, kategori pelanggaran) ditulis ke `standard_logging_guardrail_information` dengan provider `kawallm`, sehingga Guardrails Monitor, Langfuse, dan Datadog bisa menampilkannya. Hanya jumlah dan nama kategori yang dicatat, tanpa teks atau nilai PII. Butuh `kawallm >= 0.2.3`; versi LiteLLM tanpa helper ini dilewati.
+
+Mode per entitas di config (HP dan email dikembalikan di jawaban, sisanya token):
+
+```yaml
+      masking_mode: token
+      mode_by_entity: {ID_PHONE: reversible, EMAIL: reversible}
+```
+
 Docker siap jalan (LiteLLM + KawalLM):
 
 ```bash
@@ -217,6 +227,12 @@ from kawallm.integrations.fastapi import KawalLMMiddleware
 app = FastAPI()
 app.add_middleware(KawalLMMiddleware, paths=("/chat",), fields=("prompt", "message"))
 ```
+
+Perilaku yang perlu diketahui:
+- Body `application/json`, media type `+json` (mis. `application/vnd.api+json`), dan body tanpa Content-Type diperiksa. Form dan multipart **tidak** diperiksa.
+- PII dimaskir di semua field yang disebut dan di `content` pesan, termasuk pesan `system`; safety scan melewati `content` pesan `system` saja (`scan_system_messages=True` untuk ikut memeriksanya).
+- **Gagal tertutup:** body yang bukan JSON diteruskan apa adanya, tetapi body JSON yang tidak bisa disanitasi (atau terlalu dalam) ditolak dengan HTTP 400, tidak pernah diteruskan mentah.
+- `audit=` menerima `AuditLog` atau fungsi sink, seperti di LiteLLM.
 
 ## Safety: cara kerja skor
 

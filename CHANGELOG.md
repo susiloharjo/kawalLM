@@ -2,7 +2,9 @@
 
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikuti [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.3.0] - 2026-11-09
+
+**Perhatian keamanan:** 0.2.2 dan 0.2.3 punya celah di middleware FastAPI (lihat *Fixed* di bawah). Pengguna `KawalLMMiddleware` sebaiknya segera meningkatkan ke 0.3.0.
 
 ### Added
 - Profil `extended` (opt-in, `entities="extended"`): quasi-identifier `ID_BIRTHDATE`, `ID_AGE`, `ID_POSTAL_CODE`, `ID_ADDRESS`, `GEO_COORDINATES`. Setiap entitas membutuhkan label atau penanda struktural untuk menjaga false positive tetap rendah. Perilaku default tidak berubah.
