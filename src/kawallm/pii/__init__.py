@@ -41,6 +41,9 @@ DETECTORS = {
 
 ALL_ENTITIES = tuple(DETECTORS)
 
+# Entity names that a detector emits, mapped to the detector key that produces them.
+_DETECTOR_OF = {"ID_BPJS_KES": "ID_BPJS", "ID_BPJS_TK": "ID_BPJS"}
+
 
 # Invisible characters that can split a number ("0812\u200b34567890") without changing how it looks.
 _INVISIBLE = re.compile(r"[\u00ad\u200b-\u200f\u2060\ufeff]")
@@ -53,17 +56,34 @@ def detect_pii(text: str, entities: tuple[str, ...] | None = None, check_region:
     serial checks still apply). Invisible characters are ignored for detection, and
     match positions always refer to the original text.
     """
+    wanted = _resolve_entities(entities)
     if not text or not any(ch.isdigit() or ch == "@" or ch.isupper() for ch in text):
         return []
     if _INVISIBLE.search(text):
         return _detect_without_invisible(text, entities, check_region)
     found: list[PIIMatch] = []
-    for name in entities or ALL_ENTITIES:
+    for name in wanted:
         if name == "ID_NIK":
             found.extend(find_nik(text, check_region=check_region))
         else:
             found.extend(DETECTORS[name](text))
+    if entities:  # a detector may emit more than was asked for (e.g. ID_BPJS_TK when only ID_BPJS_KES is wanted)
+        found = [m for m in found if m.entity in entities or _DETECTOR_OF.get(m.entity) in entities]
     return resolve_overlaps(found)
+
+
+def _resolve_entities(entities) -> tuple[str, ...]:
+    """Detector keys to run for the requested entity names, without duplicates. Unknown names raise ValueError."""
+    if not entities:
+        return ALL_ENTITIES
+    keys: dict[str, None] = {}
+    for name in entities:
+        key = _DETECTOR_OF.get(name, name)
+        if key not in DETECTORS:
+            known = sorted({*DETECTORS, *_DETECTOR_OF})
+            raise ValueError(f"unknown entity {name!r}; expected one of {known}")
+        keys[key] = None
+    return tuple(keys)
 
 
 def _detect_without_invisible(text: str, entities, check_region: bool) -> list[PIIMatch]:
