@@ -2,6 +2,14 @@
 
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikuti [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Profil `extended` (opt-in, `entities="extended"`): quasi-identifier `ID_BIRTHDATE`, `ID_AGE`, `ID_POSTAL_CODE`, `ID_ADDRESS`, `GEO_COORDINATES`. Setiap entitas membutuhkan label atau penanda struktural untuk menjaga false positive tetap rendah. Perilaku default tidak berubah.
+- Mode masking `generalize`: menurunkan presisi (tanggal lahir menjadi tahun, usia menjadi rentang, kode pos 3 digit, alamat menjadi wilayahnya, koordinat dibulatkan). Entitas tanpa generalisasi menjadi token biasa.
+- `entities=` menerima nama profil (`core`, `extended`) atau daftar dipisah koma; `kawallm.pii.expand_entities`, `PROFILES`, `QUASI_ENTITIES`.
+- Audit log: field `flags` dengan `combined_quasi_identifiers` bila satu request memuat dua atau lebih jenis quasi-identifier. Hanya jumlah, tanpa nilai.
+
 ## [0.2.3] - 2026-11-08
 
 ### Added

@@ -10,11 +10,12 @@ from dataclasses import dataclass, field, replace
 from typing import Protocol, runtime_checkable
 
 from .audit import AuditLog, AuditSink, as_audit_log
-from .pii import ALL_ENTITIES, PIIMatch, detect_pii
+from .pii import ALL_ENTITIES, PIIMatch, detect_pii, expand_entities
+from .pii.quasi import GENERALIZERS
 from .placeholders import StreamDeanonymizer, assign_token, restore_tokens
 from .safety import SafetyResult, SafetyScanner
 
-MASK_MODES = ("token", "redact", "partial", "reversible")
+MASK_MODES = ("token", "redact", "partial", "reversible", "generalize")
 
 
 @dataclass
@@ -103,7 +104,7 @@ class KawalLMEngine:
         self.mask_pii_enabled = mask_pii
         self.block_violations = block_violations
         self.mode = mode
-        self.entities = tuple(entities) if entities else ALL_ENTITIES
+        self.entities = expand_entities(entities) if entities else ALL_ENTITIES
         self.redact_text = redact_text
         self.validate_wilayah = validate_wilayah
         self.scanner = SafetyScanner(
@@ -133,6 +134,12 @@ class KawalLMEngine:
         if mode == "reversible":
             assert session_id is not None
             return self.vault.token_for(session_id, m.entity, m.text)
+        if mode == "generalize":
+            # Lower the precision instead of replacing: a birth date becomes its year, an address its area, and so on.
+            # Entities without a generalisation (an ID number, say) fall back to the plain token.
+            generalize = GENERALIZERS.get(m.entity)
+            generalized = generalize(m) if generalize else None
+            return generalized if generalized is not None else f"<{m.entity}>"
         if mode == "redact":
             return self.redact_text
         if mode == "partial":

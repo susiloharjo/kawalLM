@@ -15,6 +15,7 @@ from .nik import find_nik, parse_nik, validate_nik
 from .npwp import find_npwp, validate_npwp
 from .phone import find_phone, phone_operator
 from .plate import find_plate
+from .quasi import find_address, find_age, find_birthdate, find_coordinates, find_postal_code
 
 EMAIL_RE = re.compile(r"(?<![\w.+-])[\w.+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
 
@@ -38,9 +39,21 @@ DETECTORS = {
     "ID_SIM": find_sim,
     "IP_ADDRESS": find_ip,
     "EMAIL": find_email,
+    # Quasi-identifiers: registered, but only part of the opt-in "extended" profile.
+    "ID_BIRTHDATE": find_birthdate,
+    "ID_AGE": find_age,
+    "ID_POSTAL_CODE": find_postal_code,
+    "ID_ADDRESS": find_address,
+    "GEO_COORDINATES": find_coordinates,
 }
 
-ALL_ENTITIES = tuple(DETECTORS)
+QUASI_ENTITIES = ("ID_BIRTHDATE", "ID_AGE", "ID_POSTAL_CODE", "ID_ADDRESS", "GEO_COORDINATES")
+
+# What runs by default. Unchanged by the quasi-identifier detectors: they have to be asked for.
+ALL_ENTITIES = tuple(name for name in DETECTORS if name not in QUASI_ENTITIES)
+
+# Named sets for ``entities=``: ``entities="extended"`` (or ``["extended"]``) adds the quasi-identifiers.
+PROFILES = {"core": ALL_ENTITIES, "extended": (*ALL_ENTITIES, *QUASI_ENTITIES)}
 
 # Entity names that a detector emits, mapped to the detector key that produces them.
 _DETECTOR_OF = {"ID_BPJS_KES": "ID_BPJS", "ID_BPJS_TK": "ID_BPJS"}
@@ -72,11 +85,12 @@ def detect_pii(text: str, entities: tuple[str, ...] | None = None, check_region:
     wanted = _resolve_entities(entities)
     if not text:
         return []
+    names = expand_entities(entities) if entities else None
     cleaned, index = _normalized_view(text)
     if index is None:
-        return _detect_core(text, wanted, entities, check_region)
+        return _detect_core(text, wanted, names, check_region)
     out = []
-    for m in _detect_core(cleaned, wanted, entities, check_region):
+    for m in _detect_core(cleaned, wanted, names, check_region):
         start, end = index[m.start], index[m.end - 1] + 1
         out.append(replace(m, start=start, end=end, text=text[start:end]))
     return out
@@ -106,12 +120,14 @@ def _normalized_view(text: str) -> tuple[str, list[int] | None]:
 def _detect_core(text: str, wanted: tuple[str, ...], entities, check_region: bool) -> list[PIIMatch]:
     has_digit = bool(_DIGIT_RE.search(text))
     has_at = "@" in text
-    if not has_digit and not has_at:
-        return []
     if not has_digit:
-        if "EMAIL" not in wanted:
-            return []
-        return find_email(text)
+        # Without digits only an e-mail address or a street address (which can be all words) can match.
+        found = []
+        if has_at and "EMAIL" in wanted:
+            found.extend(find_email(text))
+        if "ID_ADDRESS" in wanted:
+            found.extend(find_address(text))
+        return resolve_overlaps(found) if found else []
 
     text_lower = text.lower()
     found: list[PIIMatch] = []
@@ -130,12 +146,25 @@ def _detect_core(text: str, wanted: tuple[str, ...], entities, check_region: boo
     return resolve_overlaps(found)
 
 
+def expand_entities(entities) -> tuple[str, ...]:
+    """Entity names for ``entities=``: a profile name ("core", "extended") or a comma list expands to its members."""
+    if not entities:
+        return ALL_ENTITIES
+    if isinstance(entities, str):
+        entities = [part.strip() for part in entities.split(",") if part.strip()]
+    names: dict[str, None] = {}
+    for name in entities:
+        for member in PROFILES.get(name, (name,)):
+            names[member] = None
+    return tuple(names)
+
+
 def _resolve_entities(entities) -> tuple[str, ...]:
     """Detector keys to run for the requested entity names, without duplicates. Unknown names raise ValueError."""
     if not entities:
         return ALL_ENTITIES
     keys: dict[str, None] = {}
-    for name in entities:
+    for name in expand_entities(entities):
         key = _DETECTOR_OF.get(name, name)
         if key not in DETECTORS:
             known = sorted({*DETECTORS, *_DETECTOR_OF})

@@ -106,6 +106,7 @@ kawallm --json "abaikan instruksi sebelumnya"  # exit code 2 bila diblokir
 | `reversible` | `<ID_NIK_1_a3f2c9>` + vault TTL in-memory | De-masking di respons (FR-3.2) |
 | `partial` | `************0001` | Log / tampilan UI |
 | `redact` | `[REDACTED]` | Data lake, fine-tuning |
+| `generalize` | `1990`, `30-39 tahun`, `101**`, `Kel. Menteng, Kec. Menteng` | Menurunkan presisi, bukan menghapus; hanya untuk entitas `extended` (ID lain tetap jadi `<ID_...>`) |
 
 ### Entitas
 
@@ -113,6 +114,28 @@ kawallm --json "abaikan instruksi sebelumnya"  # exit code 2 bila diblokir
 `IP_ADDRESS` mencakup IPv4 dan IPv6 yang valid; angka mirip IP seperti nomor build (`10.0.19045.2965`), `v1.2.3.4`, MAC, dan jam tidak ikut. Alamat IP internal (`10.x`, `192.168.x`) juga dimaskir; untuk asisten jaringan yang perlu melihat IP, matikan lewat `entities=` (mis. tanpa `IP_ADDRESS`).
 NIP (18 digit) dikenali dari strukturnya (tanggal lahir + bulan pengangkatan + gender). NISN, paspor, dan SIM tidak punya checksum, jadi hanya dimaskir bila ada kata kunci di dekatnya (`NISN`, `paspor`, `SIM`).
 Catatan: nomor **KK** punya struktur sama dengan NIK, sehingga terdeteksi sebagai `ID_NIK` (keduanya data pribadi).
+
+#### Profil `extended`: quasi-identifier (opt-in)
+
+Lima entitas lain tidak mengidentifikasi seseorang sendirian, tetapi gabungannya bisa. Entitas ini **tidak aktif secara default**; aktifkan dengan `entities="extended"` (atau `["extended"]`; di LiteLLM `entities: extended`). Perilaku default tidak berubah.
+
+| Entitas | Syarat deteksi |
+|---|---|
+| `ID_BIRTHDATE` | Tanggal valid setelah label `tanggal lahir`, `tgl lahir`, `TTL`, `DOB`, `born` |
+| `ID_AGE` | Angka 1–120 setelah `umur`, `usia`, `berumur`, `age` |
+| `ID_POSTAL_CODE` | 5 digit (tidak diawali 0) setelah `kode pos`, `postal code`, `zip` |
+| `ID_ADDRESS` | Penanda jalan (`Jl.`, `Jalan`, `Gg.`, `Gang`) + nama berhuruf kapital + nomor, RT/RW, atau kelurahan/kecamatan/kota |
+| `GEO_COORDINATES` | Pasangan lintang/bujur dengan ≥ 5 desimal (sekitar 1 m) dan label `koordinat`, `lokasi`, `GPS`, `latitude`, dan sejenisnya |
+
+```python
+guard = KawalLM(entities="extended", mode="generalize")
+guard.scan(
+    "Lahir: 12 Mei 1990, usia 34 tahun, kode pos 10110. Alamat Jl. Sudirman No. 5, Kel. Menteng, Kec. Menteng"
+).sanitized_text
+# 'Lahir: 1990, usia 30-39 tahun, kode pos 101**. Alamat Kel. Menteng, Kec. Menteng'
+```
+
+Entitas ini sengaja mewajibkan label atau penanda, supaya tanggal biasa, angka, dan kalimat tentang "jalan" tidak ikut terdeteksi. Konsekuensinya recall lebih rendah: tanggal lahir tanpa label tidak ditemukan. Profil ini menambah sekitar 20–25% waktu per payload (1.000 kata: p50 sekitar 1,3 ms menjadi 1,6 ms di mesin pengembangan); ukur dampaknya di trafikmu sebelum mengaktifkannya di produksi. Audit log menandai request yang memuat dua atau lebih jenis quasi-identifier sekaligus dengan `flags: ["combined_quasi_identifiers"]` (hanya jumlah, tanpa nilai).
 
 ## LiteLLM Proxy
 
@@ -214,6 +237,7 @@ Angka ini hasil satu mesin pengembangan. Jalankan benchmark di mesin target sebe
 - Validasi NIK/NPWP memeriksa **format**, bukan keberadaan orangnya.
 - Yang **tidak** terdeteksi: telepon rumah dengan kode area di luar daftar `AREA_CODES` (kota besar dan ibu kota kabupaten; tambahkan lewat PR) atau tanpa pemisah dan tanpa kata kunci (`telp`, `fax`), rekening tanpa kata konteks (mis. "Kirim ke 1234567890", disengaja agar nomor biasa tidak ikut termaskir), serta NIK/NPWP dengan tanggal atau checksum tidak valid (aman dari false positive, tetapi salah ketik lolos).
 - Middleware FastAPI memeriksa body JSON (termasuk `+json`). Body form dan multipart tidak diperiksa; endpoint yang menerimanya perlu pemeriksaan sendiri.
+- Quasi-identifier (profil `extended`) memakai label dan penanda, bukan NER: nama orang, alamat tanpa penanda jalan, dan tanggal lahir tanpa label tidak terdeteksi. `generalize` menurunkan presisi, tetapi tidak menjadikan data anonim, dan tidak menilai risiko re-identifikasi.
 - Argumen tool-call lebih dari 256.000 karakter atau JSON lebih dalam dari 64 level ditolak dengan HTTP 400, sengaja, untuk melindungi dari beban yang tidak wajar.
 - Vault reversible default bersifat in-memory per proses; untuk multi-replica gunakan sticky session, `session_map` stateless, atau implementasikan protokol `VaultBackend`.
 - Safety scan tidak memeriksa argumen `tool_calls` kecuali role `assistant` (atau `tool` untuk output tool eksternal) ditambahkan ke `scan_roles` (PII di argumen selalu dimaskir).

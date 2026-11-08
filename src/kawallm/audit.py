@@ -37,6 +37,7 @@ class AuditEvent:
     entities: dict[str, int] = field(default_factory=dict)
     categories: list[str] = field(default_factory=list)
     context: dict[str, str] = field(default_factory=dict)
+    flags: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -47,6 +48,7 @@ class AuditEvent:
             "entities": dict(self.entities),
             "categories": list(self.categories),
             "context": dict(self.context),
+            "flags": list(self.flags),
         }
 
     def to_json(self) -> str:
@@ -54,6 +56,15 @@ class AuditEvent:
 
 
 AuditSink = Callable[[AuditEvent], None]
+
+# Entities that do not identify a person alone but can in combination (birth date + postal code + age...).
+_QUASI_ENTITIES = frozenset({"ID_BIRTHDATE", "ID_AGE", "ID_POSTAL_CODE", "ID_ADDRESS", "GEO_COORDINATES"})
+COMBINED_QUASI_IDENTIFIERS = "combined_quasi_identifiers"
+
+
+def _flags(counts: Counter) -> list[str]:
+    """``combined_quasi_identifiers`` when a request holds two or more different quasi-identifier types."""
+    return [COMBINED_QUASI_IDENTIFIERS] if len(_QUASI_ENTITIES & counts.keys()) >= 2 else []
 
 
 def logging_sink(name: str = "kawallm.audit", level: int = logging.INFO) -> AuditSink:
@@ -119,6 +130,7 @@ class AuditLog:
             entities=dict(sorted(counts.items())),
             categories=cats,
             context=_clean_context(context),
+            flags=_flags(counts),
         )
         for sink in self.sinks:
             try:

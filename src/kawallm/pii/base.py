@@ -23,7 +23,12 @@ PRIORITY = {
     "ID_SIM": 65,
     "ID_PHONE": 60,
     "EMAIL": 55,
+    "ID_ADDRESS": 48,
+    "GEO_COORDINATES": 47,
+    "ID_BIRTHDATE": 46,
     "IP_ADDRESS": 45,
+    "ID_AGE": 44,
+    "ID_POSTAL_CODE": 43,
     "ID_PLATE": 40,
 }
 
