@@ -134,8 +134,17 @@ async def test_thinking_blocks_are_masked_in_a_complete_response():
     block = {"type": "thinking", "thinking": f"NIK {NIK}", "signature": "sig"}
     msg = NS(content="ok", tool_calls=None, thinking_blocks=[block])
     out = await g.async_post_call_success_hook({}, None, NS(choices=[NS(message=msg)]))
-    assert out.choices[0].message.thinking_blocks[0]["thinking"] == "NIK <ID_NIK>"
-    assert out.choices[0].message.thinking_blocks[0]["signature"] == "sig"
+    assert not out.choices[0].message.thinking_blocks  # changed text: the signed block is not sent
+
+
+async def test_a_clean_signed_thinking_block_is_kept_as_it_was():
+    g = _guard()
+    block = {"type": "thinking", "thinking": "hitung dulu", "signature": "sig"}
+    msg = NS(content="ok", tool_calls=None, thinking_blocks=[block])
+    out = await g.async_post_call_success_hook({}, None, NS(choices=[NS(message=msg)]))
+    assert out.choices[0].message.thinking_blocks == [
+        {"type": "thinking", "thinking": "hitung dulu", "signature": "sig"}
+    ]
 
 
 # ---------------------------------------------------------------- 4. JSON keys and floats in tool-call arguments

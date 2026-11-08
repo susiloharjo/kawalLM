@@ -6,7 +6,7 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikut
 
 ### Fixed
 - Streaming: teks yang menahan buffer kini 160 karakter (sebelumnya 64), sehingga keyword rekening yang muncul sampai 110 karakter sesudah nomor tetap terlihat detektor. Nomor rekening tidak lagi bocor pada chunk kecil.
-- `thinking_blocks` pada stream ikut dimaskir: teks ditahan per block (per `index`) dan dikeluarkan bersama signature-nya, sudah dimaskir. Dua block dengan angka yang sama tidak lagi digabung, dan thinking tidak lagi hilang saat dirakit ulang oleh LiteLLM.
+- `thinking_blocks` pada stream ikut dimaskir: teks ditahan per block (per `index`) dan dikeluarkan bersama signature-nya, sudah dimaskir. Dua block dengan angka yang sama tidak lagi digabung, dan thinking tidak lagi hilang saat dirakit ulang oleh LiteLLM. Block bertanda tangan yang teksnya berubah karena masking (atau restore) tidak dikirim dengan signature asli: di stream signature dikosongkan, di respons lengkap block dibuang.
 - Request: `reasoning_content` dan `thinking_blocks` di riwayat assistant (serta blok `thinking` di `content`) dimaskir sebelum dikirim ke provider. Blok thinking yang bertanda tangan dan berisi PII dibuang, karena mengubah teksnya akan ditolak provider.
 - Angka dengan eksponen lebih dari ±4096 di argumen tool-call ditolak (400) tanpa diekspansi; sebelumnya `1e100000` menghasilkan string 100 001 karakter.
 - Angka di argumen tool-call dikeluarkan dari teks aslinya: `1e400` tetap `1e400` (sebelumnya `Infinity`, JSON tidak valid), dan presisi desimal panjang tidak hilang.

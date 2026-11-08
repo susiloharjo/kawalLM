@@ -78,7 +78,7 @@ async def test_thinking_block_text_is_masked_in_a_stream(size):
     thinking, signatures = await _stream_thinking(_guard(), text, size)
     assert NIK not in thinking and "1234567890" not in thinking
     assert thinking == KawalLM().scan(text).sanitized_text
-    assert signatures == ["sig-abc"]  # the signature is passed through unchanged
+    assert signatures == []  # the text changed, so the original signature is not sent with it
 
 
 # ---------------------------------------------------------------- 3. thinking and reasoning sent back in history
@@ -164,6 +164,20 @@ async def _assembled_thinking(g, inputs):
     return ChunkProcessor(emitted).get_combined_thinking_content(emitted)
 
 
+async def _stream_by_index(g, inputs):
+    """Concatenated thinking text per block index, as a client sees it."""
+    texts: dict = {}
+    async for c in g.async_post_call_streaming_iterator_hook(None, _as_gen(inputs), {}):
+        for b in getattr(c.choices[0].delta, "thinking_blocks", None) or []:
+            texts[b.get("index")] = texts.get(b.get("index"), "") + (b.get("thinking") or "")
+    return texts
+
+
+async def _as_gen(items):
+    for item in items:
+        yield item
+
+
 async def test_two_thinking_blocks_with_the_same_number_are_masked_separately():
     inputs = [
         _thinking_chunk([{"type": "thinking", "thinking": f"NIK {NIK}", "signature": None, "index": 0}]),
@@ -172,12 +186,11 @@ async def test_two_thinking_blocks_with_the_same_number_are_masked_separately():
         _thinking_chunk([{"type": "thinking", "thinking": "", "signature": "sig-b", "index": 1}]),
         _thinking_chunk([], "stop"),
     ]
-    blocks = await _assembled_thinking(_guard(), inputs)
-    assert [(b["thinking"], b["signature"]) for b in blocks] == [("NIK <ID_NIK>", "sig-a"), ("NIK <ID_NIK>", "sig-b")]
+    assert await _stream_by_index(_guard(), inputs) == {0: "NIK <ID_NIK>", 1: "NIK <ID_NIK>"}
 
 
 @pytest.mark.parametrize("size", [1, 4, 9])
-async def test_a_block_split_over_chunks_keeps_its_text_and_signature_together(size):
+async def test_a_signed_block_whose_text_changed_is_not_sent_as_a_reusable_block(size):
     text = f"Pikir: NIK {NIK} lalu rekening BCA 1234567890 selesai " + "x " * 20
     inputs = [
         _thinking_chunk([{"type": "thinking", "thinking": text[i : i + size], "signature": None, "index": 0}])
@@ -185,9 +198,27 @@ async def test_a_block_split_over_chunks_keeps_its_text_and_signature_together(s
     ]
     inputs.append(_thinking_chunk([{"type": "thinking", "thinking": "", "signature": "sig-x", "index": 0}]))
     inputs.append(_thinking_chunk([], "stop"))
+    assert await _stream_by_index(_guard(), inputs) == {0: KawalLM().scan(text).sanitized_text}
+    assert not await _assembled_thinking(_guard(), inputs)  # no block carries sig-x with masked text
+
+
+async def test_masked_signed_thinking_is_not_reused_with_its_original_signature_in_the_next_request():
+    inputs = [
+        _thinking_chunk([{"type": "thinking", "thinking": f"NIK {NIK}", "signature": None, "index": 0}]),
+        _thinking_chunk([{"type": "thinking", "thinking": "", "signature": "orig-sig", "index": 0}]),
+        _thinking_chunk([], "stop"),
+    ]
     blocks = await _assembled_thinking(_guard(), inputs)
-    assert [b["signature"] for b in blocks] == ["sig-x"]
-    assert blocks[0]["thinking"] == KawalLM().scan(text).sanitized_text
+    history = {
+        "messages": [
+            {"role": "assistant", "content": "ok", "thinking_blocks": blocks},
+            {"role": "user", "content": "lanjut"},
+        ]
+    }
+    await _guard().async_pre_call_hook(None, None, history, "completion")
+    sent = history["messages"][0].get("thinking_blocks") or []
+    assert all(b.get("signature") != "orig-sig" for b in sent)
+    assert NIK not in json.dumps(history)
 
 
 async def test_signature_arriving_after_clean_text_still_reaches_the_client_with_its_text():

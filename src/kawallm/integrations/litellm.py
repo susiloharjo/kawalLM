@@ -511,14 +511,18 @@ class KawalLMGuardrail(CustomGuardrail):
                 value = getattr(message, field, None)
                 if isinstance(value, str):
                     setattr(message, field, self._process_output(value, sid, counts))
-            for block in getattr(message, "thinking_blocks", None) or []:
-                text = block.get("thinking") if isinstance(block, dict) else getattr(block, "thinking", None)
-                if isinstance(text, str):
-                    cleaned = self._process_output(text, sid, counts)
-                    if isinstance(block, dict):
-                        block["thinking"] = cleaned
-                    else:
-                        block.thinking = cleaned
+            blocks = getattr(message, "thinking_blocks", None)
+            if blocks:
+                kept = []
+                for block in blocks:
+                    text = _block_text(block)
+                    if isinstance(text, str):
+                        cleaned = self._process_output(text, sid, counts)
+                        if cleaned != text and _block_signature(block):
+                            continue  # the signature belongs to the original text: the block is not sent
+                        _set_block_text(block, cleaned)
+                    kept.append(block)
+                message.thinking_blocks = kept or None
             calls = [getattr(tc, "function", None) for tc in getattr(message, "tool_calls", None) or []]
             calls.append(getattr(message, "function_call", None))  # deprecated single-call field
             for fn in calls:
@@ -616,6 +620,13 @@ def _block_index(block: Any) -> Any:
 
 def _block_signature(block: Any) -> Any:
     return block.get("signature") if isinstance(block, dict) else getattr(block, "signature", None)
+
+
+def _set_block_signature(block: Any, signature: Any) -> None:
+    if isinstance(block, dict):
+        block["signature"] = signature
+    else:
+        block.signature = signature
 
 
 def _set_block_text(block: Any, text: str) -> None:
@@ -762,7 +773,13 @@ class _ChoiceStream:
             if _block_signature(block):
                 parts = self.thinking.pop(key, None)  # the block is complete: release it with its signature
                 if parts:
-                    _set_block_text(block, self.guard._process_output("".join(parts), self.sid, self.counts))
+                    original = "".join(parts)
+                    masked = self.guard._process_output(original, self.sid, self.counts)
+                    _set_block_text(block, masked)
+                    if masked != original:
+                        # The signature belongs to the original text. Without it the assembler does not
+                        # complete the block, so the masked text is not sent as a reusable signed block.
+                        _set_block_signature(block, None)
 
     def hold_function_call(self, fc: Any) -> None:
         if self.legacy_fc is None:
