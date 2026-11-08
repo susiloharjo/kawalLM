@@ -129,6 +129,16 @@ Setiap rilis wajib memperbarui dokumentasi, bukan hanya kode:
 5. `uv run pytest`: `tests/test_docs_in_sync.py` gagal bila entitas belum ada di README atau versi belum punya entri CHANGELOG.
 6. `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`. Workflow publish menjalankan test yang sama sebelum upload.
 
+## Eval kebocoran (`evals/breaches`)
+
+Selain `pytest` biasa, repo punya suite offline untuk pola kebocoran yang pernah ditemukan di review (bypass safety, Unicode, masking, streaming, JSON tool call, isolasi sesi, generalisasi alamat). Semua datanya sintetis dan tidak butuh API key:
+
+```bash
+uv run pytest evals/breaches
+```
+
+Setelah memperbaiki kebocoran baru, tambahkan kasusnya di `evals/breaches/cases.json` atau `test_breaches.py` dengan ID baru dan ekspektasi eksplisit. Lulus semua eval bukan bukti aplikasi bebas kebocoran; lihat batasnya di `evals/breaches/README.md`. Job CI `breach-evals` menjalankannya di setiap push.
+
 ## Checklist PR
 
 - [ ] Test hijau, coverage ≥ 90%

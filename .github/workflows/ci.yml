@@ -36,6 +36,18 @@ jobs:
           uv pip install -e ".[dev,litellm,presidio]"
           uv run pytest --cov --cov-fail-under=90
 
+  breach-evals:
+    # Offline regression suite for leak patterns found in review (synthetic data, no API keys).
+    # Kept outside the default testpaths; a missing dependency is an error, never a skip.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv venv --clear && uv pip install -e ".[dev,litellm]"
+      - run: uv run pytest evals/breaches -p no:cacheprovider
+
   benchmark:
     runs-on: ubuntu-latest
     needs: test
