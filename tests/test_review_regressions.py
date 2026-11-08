@@ -311,3 +311,44 @@ async def test_split_parts_respect_mask_pii_off():
     d = {"messages": [{"role": "user", "content": [{"type": "text", "text": t} for t in parts]}]}
     await g.async_pre_call_hook(None, None, d, "completion")
     assert [p["text"] for p in d["messages"][0]["content"]] == parts
+
+
+def _response(text):
+    return NS(choices=[NS(message=NS(content=text, tool_calls=None))])
+
+
+def _caller(api_key, team="team-a", user="u1"):
+    return NS(api_key=api_key, team_id=team, user_id=user)
+
+
+async def test_same_session_id_from_two_callers_does_not_share_a_mapping():
+    """Two callers that send the same session id must not restore each other's values."""
+    g = G(masking_mode="reversible")
+    a = {"litellm_call_id": "shared-id", "messages": [{"role": "user", "content": f"NIK {NIK}"}]}
+    await g.async_pre_call_hook(_caller("key-a"), None, a, "completion")
+    tok_a = token(a["messages"][0]["content"], "<ID_NIK_1>")
+
+    b = {"litellm_call_id": "shared-id", "messages": [{"role": "user", "content": "halo"}]}
+    await g.async_pre_call_hook(_caller("key-b", team="team-b", user="u2"), None, b, "completion")
+    out = await g.async_post_call_success_hook(
+        b, _caller("key-b", team="team-b", user="u2"), _response(f"Data {tok_a}")
+    )
+    assert out.choices[0].message.content == f"Data {tok_a}"  # b cannot restore a's value
+
+
+async def test_client_supplied_session_metadata_is_ignored_on_the_request_side():
+    """A client that names another request's session in metadata must not get that mapping."""
+    g = G(masking_mode="reversible")
+    victim = {"litellm_call_id": "victim-call", "messages": [{"role": "user", "content": f"NIK {NIK}"}]}
+    await g.async_pre_call_hook(_caller("key-v"), None, victim, "completion")
+    tok = token(victim["messages"][0]["content"], "<ID_NIK_1>")
+
+    attacker = {
+        "litellm_call_id": "attacker-call",
+        "metadata": {"kawallm_session": "victim-call"},
+        "messages": [{"role": "user", "content": "halo"}],
+    }
+    await g.async_pre_call_hook(_caller("key-v"), None, attacker, "completion")
+    assert attacker["metadata"]["kawallm_session"] == "attacker-call"
+    out = await g.async_post_call_success_hook(attacker, _caller("key-v"), _response(f"Data {tok}"))
+    assert out.choices[0].message.content == f"Data {tok}"  # not restored from the victim's session
