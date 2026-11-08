@@ -303,3 +303,11 @@ async def test_streamed_legacy_function_call_arguments_are_masked():
                 names.append(fc.name)
     assert NIK not in args and json.loads(args) == {"nik": "<ID_NIK>"}
     assert names == ["kirim"]  # the name is sent once
+
+
+async def test_split_parts_respect_mask_pii_off():
+    g = G(mask_pii=False)
+    parts = ["NIK 31710115", "01900001"]
+    d = {"messages": [{"role": "user", "content": [{"type": "text", "text": t} for t in parts]}]}
+    await g.async_pre_call_hook(None, None, d, "completion")
+    assert [p["text"] for p in d["messages"][0]["content"]] == parts

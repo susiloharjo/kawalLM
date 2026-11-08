@@ -324,6 +324,8 @@ class KawalLMGuardrail(CustomGuardrail):
         joined for detection; a match is replaced by one token in the part where it starts, and the characters of
         that match that fall into later parts are removed there.
         """
+        if not self.engine.mask_pii_enabled:
+            return
         texts = [p["text"] for p in parts]
         joined = "".join(texts)
         matches = self.engine.detect(joined)
