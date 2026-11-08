@@ -352,3 +352,26 @@ async def test_client_supplied_session_metadata_is_ignored_on_the_request_side()
     assert attacker["metadata"]["kawallm_session"] == "attacker-call"
     out = await g.async_post_call_success_hook(attacker, _caller("key-v"), _response(f"Data {tok}"))
     assert out.choices[0].message.content == f"Data {tok}"  # not restored from the victim's session
+
+
+@pytest.mark.parametrize("size", [1, 3, 7, 13, 50])
+@pytest.mark.parametrize(
+    "text,secrets,placeholder",
+    [
+        ("paspor A 1234567 " + "x" * 56, ["1234567"], "<ID_PASSPORT>"),
+        ("Plat B 1234 ABC " + "x " * 40, ["1234 ABC"], "<ID_PLATE>"),
+        ("dengan B 1234 ABC " + "x" * 60, ["1234 ABC"], "<ID_PLATE>"),
+    ],
+)
+async def test_stream_never_splits_an_entity_across_a_cut(size, text, secrets, placeholder):
+    g = G()
+
+    async def gen():
+        for i in range(0, len(text), size):
+            yield chunk(text[i : i + size])
+
+    out = ""
+    async for c in g.async_post_call_streaming_iterator_hook(None, gen(), {}):
+        out += c.choices[0].delta.content or ""
+    assert not any(s in out for s in secrets), out[:80]
+    assert placeholder in out

@@ -487,6 +487,25 @@ class _ChoiceStream:
             self.legacy_fc, self.legacy_args = None, ""
         return tail, extras, legacy
 
+    def _keep_entities_whole(self, buf: str, cut: int) -> int:
+        """Move the cut back to the start of any entity it would split (e.g. "B 1234 ABC" or "A 1234567").
+
+        Entities are at most about 64 characters, and the cut always leaves that much buffered, so every entity that
+        crosses the cut is fully visible here. Detection also sees the released context, so keyword-gated entities keep
+        their keyword. A split that starts inside already-released context is held for a bounded time only.
+        """
+        off = len(self.context)
+        combined = self.context + buf
+        while cut > 0:
+            crossing = [m for m in self.guard.engine.detect(combined) if m.start < off + cut < m.end]
+            if not crossing:
+                break
+            start = min(m.start for m in crossing) - off
+            if start <= 0:
+                return 0 if len(buf) <= _EMAIL_HOLD_CAP else cut
+            cut = start
+        return cut
+
     def _release(self, final: bool) -> str:
         buf = self.buffer
         if final:
@@ -518,6 +537,8 @@ class _ChoiceStream:
                     if len(buf) <= _EMAIL_HOLD_CAP:
                         return ""
                     cut = left if left > 0 else cut
+            if cut > 0 and self.guard.engine.mask_pii_enabled:
+                cut = self._keep_entities_whole(buf, cut)
             if cut <= 0:
                 return ""
             ready, self.buffer = buf[:cut], buf[cut:]
