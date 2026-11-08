@@ -5,6 +5,12 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikut
 ## [Unreleased]
 
 ### Fixed
+- Streaming: teks yang menahan buffer kini 160 karakter (sebelumnya 64), sehingga keyword rekening yang muncul sampai 110 karakter sesudah nomor tetap terlihat detektor. Nomor rekening tidak lagi bocor pada chunk kecil.
+- `thinking_blocks` pada stream ikut dimaskir (teks ditahan dan dikeluarkan utuh di akhir, seperti argumen tool-call; signature tetap diteruskan).
+- Request: `reasoning_content` dan `thinking_blocks` di riwayat assistant (serta blok `thinking` di `content`) dimaskir sebelum dikirim ke provider. Blok thinking yang bertanda tangan dan berisi PII dibuang, karena mengubah teksnya akan ditolak provider.
+- Angka dengan eksponen lebih dari ±4096 di argumen tool-call ditolak (400) tanpa diekspansi; sebelumnya `1e100000` menghasilkan string 100 001 karakter.
+- Angka di argumen tool-call dikeluarkan dari teks aslinya: `1e400` tetap `1e400` (sebelumnya `Infinity`, JSON tidak valid), dan presisi desimal panjang tidak hilang.
+- `NaN`/`Infinity` di argumen tool-call tidak lagi diubah menjadi JSON tidak valid; argumen itu diperlakukan sebagai teks biasa.
 - Angka valid yang diikuti angka lain ("HP 081234567890 25 November", "rekening BCA 1234567890 1000000") kini tetap dimaskir: detektor HP, telepon rumah, dan rekening mencoba kandidat utuh lalu bagian-bagiannya (terpanjang dulu).
 - Streaming kini identik dengan non-streaming untuk setiap pemotongan chunk; konteks sebelum/sesudah dipakai saat mendeteksi di buffer hold-back.
 - `reasoning_content`, `refusal`, dan `thinking_blocks` ikut dimaskir (stream dan respons lengkap), masing-masing dengan buffer sendiri.

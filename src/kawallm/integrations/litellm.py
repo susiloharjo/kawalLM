@@ -47,7 +47,11 @@ from kawallm.placeholders import _LOOSE_RE, restore_tokens
 
 _log = logging.getLogger("kawallm")
 _SESSION_KEY = "kawallm_session"
-_HOLDBACK = 64  # >= kawallm.placeholders.MAX_PLACEHOLDER_LEN
+# Detectors look up to 120 characters past an entity (bank keywords) and an entity is at most 64 characters, so the
+# released text always has its keyword visible in the held text. Keep this above both.
+_HOLDBACK = 160
+_LONG_RUN = 256  # a whitespace-free stream longer than this is released in pieces
+_MAX_NUMBER_EXPONENT = 4096  # largest |exponent| of a JSON number that is expanded to plain digits
 _MAX_TOOL_ARGUMENT_CHARS = 256_000  # larger tool-call arguments are refused (400), not parsed
 _MAX_JSON_DEPTH = 64  # deeper JSON in tool-call arguments is refused (400)
 _EMAIL_HOLD_CAP = 512  # longest whitespace-free run kept back while it may still be an e-mail (RFC 5321 limit is 254)
@@ -272,6 +276,8 @@ class KawalLMGuardrail(CustomGuardrail):
             masked = self._mask_text(text, sid, counts, mode, hint)
             return value if masked == text else masked
         if isinstance(value, Decimal):  # a JSON float, parsed without losing digits: 3171011501900001.0
+            if abs(value.adjusted()) > _MAX_NUMBER_EXPONENT:  # 1e100000 would expand to 100 000 characters
+                raise HTTPException(status_code=400, detail="[KawalLM] Angka dalam argumen tool_call terlalu besar.")
             text = format(value.to_integral_value() if value == value.to_integral_value() else value, "f")
             masked = self._mask_text(text, sid, counts, mode, hint)
             return value if masked == text else masked
@@ -303,7 +309,7 @@ class KawalLMGuardrail(CustomGuardrail):
         if len(args) > _MAX_TOOL_ARGUMENT_CHARS:
             raise HTTPException(status_code=400, detail="[KawalLM] Argumen tool_call terlalu besar.")
         try:
-            parsed = json.loads(args, parse_float=Decimal)
+            parsed = json.loads(args, parse_float=_Num, parse_constant=_reject_constant)
         except RecursionError:
             raise HTTPException(status_code=400, detail="[KawalLM] Argumen tool_call terlalu dalam (JSON).") from None
         except ValueError:
@@ -311,7 +317,7 @@ class KawalLMGuardrail(CustomGuardrail):
                 self._check(args)
             return self._mask_text(args, sid, counts, mode)
         masked = self._mask_json_value(parsed, sid, scan, counts, mode)
-        return args if masked == parsed else json.dumps(masked, ensure_ascii=False, default=_json_default)
+        return args if masked == parsed else _dumps(masked)
 
     @property
     def _output_mode(self) -> str:
@@ -390,7 +396,20 @@ class KawalLMGuardrail(CustomGuardrail):
             legacy = msg.get("function_call")  # deprecated OpenAI field, still sent by some clients
             if isinstance(legacy, dict) and isinstance(legacy.get("arguments"), str):
                 legacy["arguments"] = self._mask_arguments(legacy["arguments"], sid, scan, counts)
+            reasoning = msg.get("reasoning_content")  # assistant history is sent back to the provider
+            if isinstance(reasoning, str):
+                msg["reasoning_content"] = self._mask_text(reasoning, sid, counts)
+            if isinstance(msg.get("thinking_blocks"), list):
+                msg["thinking_blocks"] = self._mask_thinking_blocks(msg["thinking_blocks"], sid, counts)
             content = msg.get("content")
+            if isinstance(content, list) and any(isinstance(p, dict) and p.get("type") == "thinking" for p in content):
+                kept: list = []
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") == "thinking":
+                        kept.extend(self._mask_thinking_blocks([part], sid, counts))
+                    else:
+                        kept.append(part)
+                content = msg["content"] = kept
             if isinstance(content, str):
                 if scan:
                     self._check(content)
@@ -413,6 +432,28 @@ class KawalLMGuardrail(CustomGuardrail):
                 else:
                     for part in parts:
                         part["text"] = self._mask_text(part["text"], sid, counts)
+
+    def _mask_thinking_blocks(self, blocks: list, sid: str | None, counts: Counter) -> list:
+        """Mask the text of thinking blocks sent back in the history.
+
+        A signed block is checked by the provider against its exact text, so changing it would be rejected. Such a
+        block is dropped when it holds PII; unsigned text is masked in place.
+        """
+        kept = []
+        for block in blocks:
+            text = _block_text(block)
+            if not isinstance(text, str):
+                kept.append(block)
+                continue
+            masked = self._mask_text(text, sid, counts)
+            if masked == text:
+                kept.append(block)
+            elif isinstance(block, dict) and block.get("signature"):
+                continue
+            else:
+                _set_block_text(block, masked)
+                kept.append(block)
+        return kept
 
     def _mask_text_parts(self, parts: list[dict], sid: str | None, counts: Counter) -> None:
         """Mask several text parts of one message as a single text, then give each part back its share.
@@ -509,6 +550,9 @@ class KawalLMGuardrail(CustomGuardrail):
                     value = getattr(delta, field, None)
                     if isinstance(value, str):
                         setattr(delta, field, st.feed_text(field, value))
+                thinking = getattr(delta, "thinking_blocks", None)
+                if thinking:
+                    st.hold_thinking(thinking)
                 if getattr(delta, "tool_calls", None) and self._tool_args_need_processing:
                     st.hold_tool_calls(delta.tool_calls)
                 fc = getattr(delta, "function_call", None)  # deprecated single-call field, streamed the same way
@@ -534,10 +578,43 @@ class KawalLMGuardrail(CustomGuardrail):
         self._record("litellm.post_call", request_data, user_api_key_dict, counts)
 
 
-def _json_default(value: Any) -> Any:
-    if isinstance(value, Decimal):  # a float that was left unchanged
-        return float(value)
-    raise TypeError(f"{type(value).__name__} is not JSON serializable")
+class _Num(Decimal):
+    """A JSON number parsed without losing digits, remembering the text it came from (``1e400`` stays ``1e400``)."""
+
+    raw: str
+
+    def __new__(cls, text: str) -> Decimal:
+        obj = super().__new__(cls, text)
+        obj.raw = text
+        return obj
+
+
+def _reject_constant(name: str) -> Any:
+    raise ValueError(f"{name} is not valid JSON")  # NaN / Infinity in the input: treated as plain text
+
+
+def _dumps(value: Any) -> str:
+    """JSON text of a parsed value. A Decimal is written from its own digits: ``1e400`` stays ``1e400``."""
+    if isinstance(value, _Num):
+        return value.raw
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, dict):
+        return "{" + ", ".join(f"{json.dumps(k, ensure_ascii=False)}: {_dumps(v)}" for k, v in value.items()) + "}"
+    if isinstance(value, list):
+        return "[" + ", ".join(_dumps(v) for v in value) + "]"
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _block_text(block: Any) -> Any:
+    return block.get("thinking") if isinstance(block, dict) else getattr(block, "thinking", None)
+
+
+def _set_block_text(block: Any, text: str) -> None:
+    if isinstance(block, dict):
+        block["thinking"] = text
+    else:
+        block.thinking = text
 
 
 # Text fields of a response message or stream delta that reach the user and so need the same protection as
@@ -602,7 +679,7 @@ class _TextChannel:
                 if buf[i].isspace() and not buf[i - 1].isdigit() and buf[i - 1] not in "+-.":
                     cut = i
                     break
-            if cut <= 0 and len(buf) > _HOLDBACK * 4:
+            if cut <= 0 and len(buf) > _LONG_RUN:
                 # Long whitespace-free stream (URL, base64, minified JSON): cut at the limit unless that
                 # would split a placeholder candidate or a digit run.
                 cut = limit
@@ -645,6 +722,7 @@ class _ChoiceStream:
         self.legacy_fc: Any = None  # copy of the first deprecated function_call fragment (carries the name)
         self.legacy_args = ""
         self.template: Any = None
+        self.thinking: list[str] = []  # thinking text, released whole and masked at the end of the stream
 
     def feed_text(self, field: str, text: str) -> str:
         channel = self.channels.get(field)
@@ -662,6 +740,13 @@ class _ChoiceStream:
             entry[1] = tc
             fn.arguments = ""  # id/name stay on the fragment; the arguments come back whole at the end
 
+    def hold_thinking(self, blocks: list) -> None:
+        for block in blocks:
+            text = _block_text(block)
+            if isinstance(text, str) and text:
+                self.thinking.append(text)
+                _set_block_text(block, "")  # the signature, if any, stays on its fragment
+
     def hold_function_call(self, fc: Any) -> None:
         if self.legacy_fc is None:
             self.legacy_fc = copy.copy(fc)
@@ -670,6 +755,9 @@ class _ChoiceStream:
 
     def finish(self) -> tuple[dict[str, str], list, Any]:
         tails = {field: tail for field, ch in self.channels.items() if (tail := ch.finish())}
+        if self.thinking:
+            tails["thinking"] = self.guard._process_output("".join(self.thinking), self.sid, self.counts)
+            self.thinking = []
         extras = []
         for raw, last in self.calls.values():
             extra = copy.copy(last)
@@ -694,6 +782,12 @@ class _ChoiceStream:
 def _apply_tails(delta: Any, tails: dict[str, str], extras: list, legacy: Any) -> None:
     """Add what a stream still held to a delta that has not been sent yet."""
     for field, tail in tails.items():
+        if field == "thinking":
+            delta.thinking_blocks = [
+                *(getattr(delta, "thinking_blocks", None) or []),
+                {"type": "thinking", "thinking": tail},
+            ]
+            continue
         setattr(delta, field, (getattr(delta, field, None) or "") + tail)
     if extras:
         delta.tool_calls = [*(getattr(delta, "tool_calls", None) or []), *extras]
@@ -725,6 +819,8 @@ def _attach_tails(pending: Any, states: dict[int, _ChoiceStream]) -> list:
                 if hasattr(new_choice.delta, field):
                     setattr(new_choice.delta, field, None)
             new_choice.delta.tool_calls = None
+            if hasattr(new_choice.delta, "thinking_blocks"):
+                new_choice.delta.thinking_blocks = None
             new_choice.delta.function_call = None
             _apply_tails(new_choice.delta, tails, extras, legacy)
             new_choice.finish_reason = None
