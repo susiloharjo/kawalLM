@@ -37,6 +37,12 @@ _ASCII_WS_TABLE = str.maketrans({chr(i): " " for i in range(128) if not chr(i).i
 _HOMOGLYPH_TABLE = str.maketrans(
     {
         # Cyrillic lowercase
+        "и": "i",
+        "һ": "h",
+        "ԁ": "d",
+        "ԝ": "w",
+        "ɡ": "g",
+        "ո": "n",
         "а": "a",
         "е": "e",
         "о": "o",

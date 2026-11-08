@@ -196,9 +196,9 @@ Default **blocking**: `JUDOL_PINJOL`, `SARA_HATE_SPEECH`, `JAILBREAK`. `TOXIC_SL
 
 | Kata / payload | p50 | p95 | p99 | Throughput / core | Peak RSS |
 |---:|---:|---:|---:|---:|---:|
-| 100 | 0.18 ms | 0.21 ms | 0.24 ms | ~5.400 req/s | 28 MB |
-| 500 | 0.81 ms | 0.86 ms | 0.88 ms | ~1.250 req/s | 28 MB |
-| 1.000 | 1.60 ms | 1.68 ms | 1.70 ms | ~630 req/s | 28 MB |
+| 100 | 0.19 ms | 0.23 ms | 0.25 ms | ~5.300 req/s | 29 MB |
+| 500 | 0.92 ms | 1.00 ms | 1.04 ms | ~1.100 req/s | 29 MB |
+| 1.000 | 1.77 ms | 1.88 ms | 1.95 ms | ~570 req/s | 29 MB |
 
 Angka ini hasil satu mesin pengembangan. Jalankan benchmark di mesin target sebelum mengandalkannya; angka di CI (artifact `benchmark`) juga bisa dijadikan acuan.
 
@@ -213,6 +213,7 @@ Angka ini hasil satu mesin pengembangan. Jalankan benchmark di mesin target sebe
 - **False positive** diukur pada set kalimat wajar `tests/data/benign_id.txt` (lebih dari 100 kalimat buatan maintainer, target < 1%, saat ini 0 terdampak). Set ini kecil dan ditulis oleh maintainer; kalimat nyata dari pengguna sangat kami butuhkan.
 - Validasi NIK/NPWP memeriksa **format**, bukan keberadaan orangnya.
 - Yang **tidak** terdeteksi: telepon rumah dengan kode area di luar daftar `AREA_CODES` (kota besar dan ibu kota kabupaten; tambahkan lewat PR) atau tanpa pemisah dan tanpa kata kunci (`telp`, `fax`), rekening tanpa kata konteks (mis. "Kirim ke 1234567890", disengaja agar nomor biasa tidak ikut termaskir), serta NIK/NPWP dengan tanggal atau checksum tidak valid (aman dari false positive, tetapi salah ketik lolos).
+- Argumen tool-call lebih dari 256.000 karakter atau JSON lebih dalam dari 64 level ditolak dengan HTTP 400, sengaja, untuk melindungi dari beban yang tidak wajar.
 - Vault reversible default bersifat in-memory per proses; untuk multi-replica gunakan sticky session, `session_map` stateless, atau implementasikan protokol `VaultBackend`.
 - Safety scan tidak memeriksa argumen `tool_calls` kecuali role `assistant` (atau `tool` untuk output tool eksternal) ditambahkan ke `scan_roles` (PII di argumen selalu dimaskir).
 

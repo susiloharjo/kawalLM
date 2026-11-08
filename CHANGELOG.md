@@ -10,13 +10,21 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikut
 - Parameter `scan_system_messages: bool = False` pada `KawalLMMiddleware` (FastAPI) agar `role: "system"` dilewati secara default, serta deteksi prompt injection yang dipecah lintas elemen `content` multimodal.
 
 ### Changed
-- Optimasi latensi `detect_pii()` dan `normalize()`: pre-filter digit/`@`, deduplikasi `text.lower()` dengan cache Aho-Corasick pada `mentions_any()`, serta pre-filter Aho-Corasick untuk karakter berulang (`_REPEAT_AUTOMATON`), menurunkan latensi `p95` 1.000 kata ke `< 1 ms` dan teks tanpa angka ke `< 1 µs`.
+- Optimasi latensi `detect_pii()` dan `normalize()`: pre-filter digit/`@`, deduplikasi `text.lower()` dengan cache Aho-Corasick pada `mentions_any()`, serta pre-filter Aho-Corasick untuk karakter berulang (`_REPEAT_AUTOMATON`), menurunkan latensi `p95` 1.000 kata dari sekitar 4,8 ms ke sekitar 1,9 ms di mesin pengembangan (Xeon Silver 4416+), dan teks tanpa angka ke `< 1 µs`.
 - Penguatan normalisasi anti-evasion: dukungan spaced-out separator campuran (`s.l-o_t`), translasi homoglyph Cyrillic/Greek, pemisahan suffix angka ekor (`g4c0r88`, `m4xw1n77`), dan stripping karakter Unicode bidirectional formatting WhatsApp (`\u202a-\u202e`, `\u2066-\u2069`).
 - Publish kembali memakai attestation PEP 740 (provenance). `0.2.0` terbit tanpa provenance karena layanan Rekor sedang error saat rilis.
 
 ### Fixed
 - Streaming LiteLLM: menahan pemotongan buffer yang membelah span entitas multi-token (`ID_PLATE`, `ID_PASSPORT`).
 - Penerimaan nama sub-entitas `ID_BPJS_KES` dan `ID_BPJS_TK` pada parameter `entities`.
+- Sesi reversible diikat ke pemanggil: ID sesi di sisi request berasal dari `litellm_call_id` (dibuat server) dan kunci vault diberi awalan hash identitas pemanggil (API key, team, user). ID sesi yang dikirim client di `metadata` diabaikan.
+- Nilai yang terpecah di beberapa text part satu pesan (mis. `NIK 31710115` + `01900001`) kini termask.
+- Streaming: field `function_call` (format lama) ikut ditahan dan dimask seperti `tool_calls`; nama fungsi hanya dikirim sekali.
+- Streaming: potongan buffer tidak lagi membelah entitas (paspor `A 1234567`, plat `B 1234 ABC`).
+- Homoglyph Cyrillic/Yunani tambahan (`и`, `һ`, `ԁ`, `ԝ`, `ɡ`, `ո`) dinormalisasi; digit fullwidth dan karakter compat lain difold ke NFKC sebelum deteksi PII, dengan posisi tetap mengacu ke teks asli.
+- Argumen tool-call di atas 256.000 karakter atau JSON lebih dalam dari 64 level ditolak dengan HTTP 400 (sebelumnya `RecursionError` atau pemrosesan yang lambat).
+- Streaming dengan token `@` yang sangat panjang lebih cepat: penahanan kandidat email dibatasi 512 karakter (RFC 5321 membatasi email 254 karakter).
+- `mask_pii=False` tidak lagi memask nilai yang terpecah di beberapa text part.
 
 ## [0.2.0] - 2026-11-07
 

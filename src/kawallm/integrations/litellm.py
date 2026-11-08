@@ -42,7 +42,9 @@ from kawallm.placeholders import _LOOSE_RE
 
 _SESSION_KEY = "kawallm_session"
 _HOLDBACK = 64  # >= kawallm.placeholders.MAX_PLACEHOLDER_LEN
-_EMAIL_HOLD_CAP = 2048  # longest whitespace-free run kept back while it may still be an e-mail address
+_MAX_TOOL_ARGUMENT_CHARS = 256_000  # larger tool-call arguments are refused (400), not parsed
+_MAX_JSON_DEPTH = 64  # deeper JSON in tool-call arguments is refused (400)
+_EMAIL_HOLD_CAP = 512  # longest whitespace-free run kept back while it may still be an e-mail (RFC 5321 limit is 254)
 
 
 def _as_bool(v: Any) -> bool:
@@ -196,6 +198,7 @@ class KawalLMGuardrail(CustomGuardrail):
         counts: Counter | None = None,
         mode: str | None = None,
         hint: str = "",
+        depth: int = 0,
     ) -> Any:
         """Mask (and optionally safety-scan) every string/int leaf of a parsed JSON value.
 
@@ -210,11 +213,13 @@ class KawalLMGuardrail(CustomGuardrail):
                 self._check(text)
             masked = self._mask_text(text, sid, counts, mode, hint)
             return value if masked == text else masked
+        if isinstance(value, list | dict) and depth >= _MAX_JSON_DEPTH:
+            raise HTTPException(status_code=400, detail="[KawalLM] Argumen tool_call terlalu dalam (JSON).")
         if isinstance(value, list):
-            return [self._mask_json_value(v, sid, scan, counts, mode, hint) for v in value]
+            return [self._mask_json_value(v, sid, scan, counts, mode, hint, depth + 1) for v in value]
         if isinstance(value, dict):
             return {
-                k: self._mask_json_value(v, sid, scan, counts, mode, f"{k} " if isinstance(k, str) else hint)
+                k: self._mask_json_value(v, sid, scan, counts, mode, f"{k} " if isinstance(k, str) else hint, depth + 1)
                 for k, v in value.items()
             }
         return value
@@ -227,8 +232,12 @@ class KawalLMGuardrail(CustomGuardrail):
         A bare number such as ``{"nik": 3171011501900001}`` becomes the string ``"<ID_NIK>"``.
         Arguments that are not valid JSON fall back to plain text masking.
         """
+        if len(args) > _MAX_TOOL_ARGUMENT_CHARS:
+            raise HTTPException(status_code=400, detail="[KawalLM] Argumen tool_call terlalu besar.")
         try:
             parsed = json.loads(args)
+        except RecursionError:
+            raise HTTPException(status_code=400, detail="[KawalLM] Argumen tool_call terlalu dalam (JSON).") from None
         except ValueError:
             if scan:
                 self._check(args)

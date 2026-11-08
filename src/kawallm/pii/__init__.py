@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import replace
 
 from .bank import find_bank_account
@@ -64,18 +65,49 @@ def detect_pii(text: str, entities: tuple[str, ...] | None = None, check_region:
     """Run selected detectors and return non-overlapping matches sorted by position.
 
     ``check_region=False`` skips the Kemendagri region lookup for NIK (date and
-    serial checks still apply). Invisible characters are ignored for detection, and
-    match positions always refer to the original text.
+    serial checks still apply). Invisible characters are dropped and compatibility
+    forms are folded (NFKC, e.g. fullwidth digits) before detection; match positions
+    always refer to the original text.
     """
     wanted = _resolve_entities(entities)
     if not text:
         return []
+    cleaned, index = _normalized_view(text)
+    if index is None:
+        return _detect_core(text, wanted, entities, check_region)
+    out = []
+    for m in _detect_core(cleaned, wanted, entities, check_region):
+        start, end = index[m.start], index[m.end - 1] + 1
+        out.append(replace(m, start=start, end=end, text=text[start:end]))
+    return out
+
+
+def _normalized_view(text: str) -> tuple[str, list[int] | None]:
+    """Text without invisible characters and with NFKC folded, plus the map back to the original positions.
+
+    Returns ``(text, None)`` when nothing changes, so the common case costs no extra work.
+    """
+    if text.isascii():
+        return text, None
+    if not _INVISIBLE.search(text) and unicodedata.normalize("NFKC", text) == text:
+        return text, None
+    chars: list[str] = []
+    index: list[int] = []
+    for i, ch in enumerate(text):
+        if _INVISIBLE.match(ch):
+            continue
+        for folded in unicodedata.normalize("NFKC", ch):
+            chars.append(folded)
+            index.append(i)
+    index.append(len(text))
+    return "".join(chars), index
+
+
+def _detect_core(text: str, wanted: tuple[str, ...], entities, check_region: bool) -> list[PIIMatch]:
     has_digit = bool(_DIGIT_RE.search(text))
     has_at = "@" in text
     if not has_digit and not has_at:
         return []
-    if _INVISIBLE.search(text):
-        return _detect_without_invisible(text, entities, check_region)
     if not has_digit:
         if "EMAIL" not in wanted:
             return []
@@ -110,16 +142,6 @@ def _resolve_entities(entities) -> tuple[str, ...]:
             raise ValueError(f"unknown entity {name!r}; expected one of {known}")
         keys[key] = None
     return tuple(keys)
-
-
-def _detect_without_invisible(text: str, entities, check_region: bool) -> list[PIIMatch]:
-    kept_index = [i for i, ch in enumerate(text) if not _INVISIBLE.match(ch)]
-    cleaned = "".join(text[i] for i in kept_index)
-    out = []
-    for m in detect_pii(cleaned, entities, check_region):
-        start, end = kept_index[m.start], kept_index[m.end - 1] + 1
-        out.append(replace(m, start=start, end=end, text=text[start:end]))
-    return out
 
 
 __all__ = [
