@@ -87,12 +87,14 @@ class KawalLMMiddleware:
 
     def _walk(self, obj: Any, counts: Counter, state: list[bool], scan: bool = True) -> Any:
         if isinstance(obj, dict):
-            if obj.get("role") == "system" and not self.scan_system_messages:
-                scan = False
+            exempt_content = obj.get("role") == "system" and not self.scan_system_messages
             out = {}
             for k, v in obj.items():
+                # A system message exempts only its own "content" from the safety scan. Sibling keys and nested
+                # objects are still scanned, so {"role": "system", "prompt": ...} cannot carry text past the guard.
+                field_scan = scan and not (exempt_content and k == "content")
                 if isinstance(v, str) and (k in self.fields or k == "content"):
-                    out[k] = self._sanitize_str(v, counts, state, scan=scan)
+                    out[k] = self._sanitize_str(v, counts, state, scan=field_scan)
                 elif isinstance(v, list) and (k == "content" or k in self.fields):
                     new_list = [dict(item) if isinstance(item, dict) else item for item in v]
                     parts = [
@@ -101,7 +103,7 @@ class KawalLMMiddleware:
                         if isinstance(p, dict) and p.get("type") == "text" and isinstance(p.get("text"), str)
                     ]
                     texts = [p["text"] for p in parts]
-                    if scan and self.engine.block_violations:
+                    if field_scan and self.engine.block_violations:
                         if len(texts) > 1:
                             for combined in ("".join(texts), " ".join(texts)):
                                 safety = self.engine.scan_safety(combined)
@@ -152,7 +154,10 @@ class KawalLMMiddleware:
             await self.app(scope, receive, send)
             return
         headers = dict(scope.get("headers") or [])
-        if b"application/json" not in headers.get(b"content-type", b""):
+        # Match the media type, not a substring: "application/vnd.api+json" is JSON too. A request without a
+        # Content-Type is checked as JSON as well; other media types (form, multipart, binary) pass through.
+        media = headers.get(b"content-type", b"").split(b";", 1)[0].strip().lower()
+        if media and media != b"application/json" and not media.endswith(b"+json"):
             await self.app(scope, receive, send)
             return
 
@@ -183,7 +188,7 @@ class KawalLMMiddleware:
                 )
             await _send_json(send, 400, {"error": f"[KawalLM Violation] Request ditolak: {v.reason}"})
             return
-        except json.JSONDecodeError:
+        except ValueError:  # invalid JSON, or bytes that are not UTF-8: pass through unchanged
             new_body = body
 
         if self.audit:

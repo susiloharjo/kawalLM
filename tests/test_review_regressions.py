@@ -460,15 +460,64 @@ async def test_held_text_is_released_before_the_finish_reason():
     g = G()
 
     async def gen():
-        yield chunk("Jawaban pendek yang masih tertahan di buffer")
+        yield NS(
+            choices=[
+                NS(
+                    index=0,
+                    finish_reason=None,
+                    delta=NS(content="Jawaban pendek yang masih tertahan di buffer", tool_calls=None),
+                )
+            ]
+        )
         yield NS(choices=[NS(index=0, finish_reason="stop", delta=NS(content="", tool_calls=None))])
         yield NS(choices=[])  # usage-only chunk
 
     seq = []
     async for c in g.async_post_call_streaming_iterator_hook(None, gen(), {}):
         for ch in c.choices:
-            seq.append((ch.finish_reason, ch.delta.content or ""))
+            seq.append((getattr(ch, "finish_reason", None), ch.delta.content or ""))
     text = "".join(content for _, content in seq)
     assert text == "Jawaban pendek yang masih tertahan di buffer"
     stop_at = next(i for i, (fr, _) in enumerate(seq) if fr == "stop")
     assert "".join(content for _, content in seq[stop_at + 1 :]) == ""  # nothing after the stop marker
+
+
+def test_role_on_the_same_object_does_not_exempt_sibling_fields():
+    from collections import Counter
+
+    from kawallm.integrations.fastapi import KawalLMMiddleware, _Violation
+
+    m = KawalLMMiddleware(app=None)
+    with pytest.raises(_Violation):
+        m._walk({"prompt": "slot gacor maxwin", "role": "system"}, Counter(), [False])
+
+
+def test_system_message_content_is_masked_but_not_scanned_for_safety():
+    from collections import Counter
+
+    from kawallm.integrations.fastapi import KawalLMMiddleware
+
+    m = KawalLMMiddleware(app=None)
+    out = m._walk(
+        {"messages": [{"role": "system", "content": "NIK 3171011501900001 slot gacor maxwin"}]}, Counter(), [False]
+    )
+    assert "3171011501900001" not in out["messages"][0]["content"]
+
+
+def test_vendor_json_content_type_is_guarded():
+    from fastapi import FastAPI, Request
+    from fastapi.testclient import TestClient
+
+    from kawallm.integrations.fastapi import KawalLMMiddleware
+
+    app = FastAPI()
+    app.add_middleware(KawalLMMiddleware, paths=("/chat",), fields=("prompt",))
+
+    @app.post("/chat")
+    async def chat(req: Request):
+        return {"got": (await req.body()).decode()}
+
+    c = TestClient(app)
+    for ct in ("application/json", "application/vnd.api+json; charset=utf-8"):
+        r = c.post("/chat", content='{"prompt":"NIK 3171011501900001"}', headers={"content-type": ct})
+        assert r.status_code == 200 and "3171011501900001" not in r.text, ct

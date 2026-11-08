@@ -196,9 +196,9 @@ Default **blocking**: `JUDOL_PINJOL`, `SARA_HATE_SPEECH`, `JAILBREAK`. `TOXIC_SL
 
 | Kata / payload | p50 | p95 | p99 | Throughput / core | Peak RSS |
 |---:|---:|---:|---:|---:|---:|
-| 100 | 0.16 ms | 0.20 ms | 0.21 ms | ~6.250 req/s | 29 MB |
-| 500 | 0.74 ms | 0.81 ms | 0.84 ms | ~1.370 req/s | 29 MB |
-| 1.000 | 1.43 ms | 1.54 ms | 1.76 ms | ~700 req/s | 29 MB |
+| 100 | 0.17 ms | 0.21 ms | 0.22 ms | ~5.800 req/s | 29 MB |
+| 500 | 0.74 ms | 0.83 ms | 1.26 ms | ~1.360 req/s | 29 MB |
+| 1.000 | 1.40 ms | 1.50 ms | 1.54 ms | ~730 req/s | 29 MB |
 
 Angka ini hasil satu mesin pengembangan. Jalankan benchmark di mesin target sebelum mengandalkannya; angka di CI (artifact `benchmark`) juga bisa dijadikan acuan.
 
@@ -213,6 +213,7 @@ Angka ini hasil satu mesin pengembangan. Jalankan benchmark di mesin target sebe
 - **False positive** diukur pada set kalimat wajar `tests/data/benign_id.txt` (lebih dari 100 kalimat buatan maintainer, target < 1%, saat ini 0 terdampak). Set ini kecil dan ditulis oleh maintainer; kalimat nyata dari pengguna sangat kami butuhkan.
 - Validasi NIK/NPWP memeriksa **format**, bukan keberadaan orangnya.
 - Yang **tidak** terdeteksi: telepon rumah dengan kode area di luar daftar `AREA_CODES` (kota besar dan ibu kota kabupaten; tambahkan lewat PR) atau tanpa pemisah dan tanpa kata kunci (`telp`, `fax`), rekening tanpa kata konteks (mis. "Kirim ke 1234567890", disengaja agar nomor biasa tidak ikut termaskir), serta NIK/NPWP dengan tanggal atau checksum tidak valid (aman dari false positive, tetapi salah ketik lolos).
+- Middleware FastAPI memeriksa body JSON (termasuk `+json`). Body form dan multipart tidak diperiksa; endpoint yang menerimanya perlu pemeriksaan sendiri.
 - Argumen tool-call lebih dari 256.000 karakter atau JSON lebih dalam dari 64 level ditolak dengan HTTP 400, sengaja, untuk melindungi dari beban yang tidak wajar.
 - Vault reversible default bersifat in-memory per proses; untuk multi-replica gunakan sticky session, `session_map` stateless, atau implementasikan protokol `VaultBackend`.
 - Safety scan tidak memeriksa argumen `tool_calls` kecuali role `assistant` (atau `tool` untuk output tool eksternal) ditambahkan ke `scan_roles` (PII di argumen selalu dimaskir).

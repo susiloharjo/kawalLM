@@ -2,6 +2,15 @@
 
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikuti [SemVer](https://semver.org/).
 
+## [0.2.2] - 2026-11-08
+
+### Fixed
+- FastAPI middleware: `role` di level yang sama dengan field lain tidak lagi membebaskan field itu dari safety scan. Pengecualian system message hanya berlaku untuk `content` pesan itu sendiri.
+- FastAPI middleware: body dengan `Content-Type: application/vnd.api+json` (dan media type `+json` lain) kini diperiksa. Sebelumnya dilewati karena pencocokan substring. Body tanpa Content-Type juga diperiksa. Form dan multipart tidak diperiksa.
+- Streaming LiteLLM: teks yang masih tertahan dilepas di chunk yang membawa `finish_reason`, sebelum tanda selesai dikirim.
+- Argumen tool-call: nilai yang dipulihkan (mis. nomor dengan newline) di-escape sebagai string JSON, sehingga argumen tetap JSON valid.
+- Dua entitas lengkap di bagian text yang berdekatan kini keduanya termask (regresi dari penggabungan bagian).
+
 ## [0.2.1] - 2026-11-08
 
 ### Added
