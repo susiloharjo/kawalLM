@@ -17,7 +17,7 @@ from .base import PIIMatch, digits_only, has_keyword_near, mentions_any
 _SEP = r"[\s.\-]?"
 NIP_RE = re.compile(rf"(\d(?<!\d.)\d{{7}}){_SEP}(\d{{6}}){_SEP}([12]){_SEP}(\d{{3}})(?!\d)")
 NISN_RE = re.compile(r"\d(?<!\d.)\d{9}(?!\d)")
-PASSPORT_RE = re.compile(r"[A-Z](?<![A-Za-z0-9].)\s?\d{7}(?![A-Za-z0-9])")
+PASSPORT_RE = re.compile(r"[A-Z](?<![A-Za-z0-9].)[A-Z]?\s?\d{7}(?![A-Za-z0-9])")
 SIM_RE = re.compile(rf"\d(?<!\d.)\d{{3}}{_SEP}\d{{4}}{_SEP}\d{{4}}(?!\d)")
 
 NISN_KEYWORDS = frozenset({"nisn", "dapodik"})
@@ -51,8 +51,8 @@ def find_nip(text: str) -> list[PIIMatch]:
     ]
 
 
-def find_nisn(text: str) -> list[PIIMatch]:
-    if not mentions_any(text, NISN_KEYWORDS):
+def find_nisn(text: str, text_lower: str | None = None) -> list[PIIMatch]:
+    if not mentions_any(text, NISN_KEYWORDS, text_lower=text_lower):
         return []
     return [
         PIIMatch("ID_NISN", m.start(), m.end(), m.group(), 0.85)
@@ -61,8 +61,8 @@ def find_nisn(text: str) -> list[PIIMatch]:
     ]
 
 
-def find_passport(text: str) -> list[PIIMatch]:
-    if not mentions_any(text, PASSPORT_KEYWORDS):
+def find_passport(text: str, text_lower: str | None = None) -> list[PIIMatch]:
+    if not mentions_any(text, PASSPORT_KEYWORDS, text_lower=text_lower):
         return []
     return [
         PIIMatch("ID_PASSPORT", m.start(), m.end(), m.group(), 0.85)
@@ -71,8 +71,8 @@ def find_passport(text: str) -> list[PIIMatch]:
     ]
 
 
-def find_sim(text: str) -> list[PIIMatch]:
-    if not mentions_any(text, SIM_KEYWORDS):
+def find_sim(text: str, text_lower: str | None = None) -> list[PIIMatch]:
+    if not mentions_any(text, SIM_KEYWORDS, text_lower=text_lower):
         return []
     return [
         PIIMatch("ID_SIM", m.start(), m.end(), m.group(), 0.85)

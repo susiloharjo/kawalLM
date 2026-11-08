@@ -32,18 +32,24 @@ BANK_ACCOUNT_LENGTHS: dict[str, frozenset[int]] = {
     "mega": frozenset({15}),
     "btpn": frozenset({11, 12}),
     "jenius": frozenset({11, 12}),
+    "bca digital": frozenset({12}),
+    "muamalat": frozenset({10}),
+    "bjb": frozenset({13}),
+    "bank dki": frozenset({11, 12}),
+    "bank jatim": frozenset({10}),
 }
+BANK_SPECS = BANK_ACCOUNT_LENGTHS
 GENERIC_KEYWORDS = frozenset({"rekening", "rek", "norek", "account", "acc", "transfer", "tf"})
 GENERIC_LENGTHS = frozenset(range(10, 17))
-_ALL_KEYWORDS = frozenset(BANK_ACCOUNT_LENGTHS) | GENERIC_KEYWORDS
+_ALL_KEYWORDS = frozenset(w for k in BANK_ACCOUNT_LENGTHS for w in k.split()) | GENERIC_KEYWORDS
 
 # Digit groups separated by single space/dot/dash, 9–19 digits total.
 ACCOUNT_RE = re.compile(r"\d(?<![\d.\-].)(?:[\s.\-]?\d){8,18}(?!\d)")
 _WORD_RE = re.compile(r"[A-Za-z]+")
 
 
-def find_bank_account(text: str, window: int = 5) -> list[PIIMatch]:
-    if not mentions_any(text, _ALL_KEYWORDS):
+def find_bank_account(text: str, window: int = 5, text_lower: str | None = None) -> list[PIIMatch]:
+    if not mentions_any(text, _ALL_KEYWORDS, text_lower=text_lower):
         return []
     out = []
     for m in ACCOUNT_RE.finditer(text):
@@ -56,7 +62,17 @@ def find_bank_account(text: str, window: int = 5) -> list[PIIMatch]:
             continue
         before = _WORD_RE.findall(text[max(0, m.start() - 120) : m.start()].lower())[-window:]
         after = _WORD_RE.findall(text[m.end() : m.end() + 120].lower())[:window]
-        nearby = list(reversed(before)) + after
+        nearby: list[str] = []
+        n_b = len(before)
+        for i in range(n_b - 1, -1, -1):
+            if i > 0:
+                nearby.append(f"{before[i - 1]} {before[i]}")
+            nearby.append(before[i])
+        n_a = len(after)
+        for i in range(n_a):
+            if i + 1 < n_a:
+                nearby.append(f"{after[i]} {after[i + 1]}")
+            nearby.append(after[i])
         bank = next((w for w in nearby if w in BANK_ACCOUNT_LENGTHS), None)
         if bank is not None:
             if n in BANK_ACCOUNT_LENGTHS[bank]:

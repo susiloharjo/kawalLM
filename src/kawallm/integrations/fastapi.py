@@ -33,6 +33,7 @@ class KawalLMMiddleware:
         fields: Iterable[str] = ("prompt", "message", "input", "query", "text"),
         max_body_bytes: int = 2_000_000,
         audit: AuditLog | AuditSink | None = None,
+        scan_system_messages: bool = False,
     ) -> None:
         self.app = app
         self.engine = engine or KawalLMEngine()
@@ -40,22 +41,47 @@ class KawalLMMiddleware:
         self.fields = frozenset(fields)
         self.max_body_bytes = max_body_bytes
         self.audit = as_audit_log(audit) or self.engine.audit
+        self.scan_system_messages = scan_system_messages
+
+    def _sanitize_str(self, v: str, counts: Counter, state: list[bool]) -> str:
+        if self.engine.block_violations:
+            safety = self.engine.scan_safety(v)
+            if not safety.safe:
+                raise _Violation(safety.reason, list(safety.violations))
+        masked = self.engine.mask(v)
+        if masked.entities:
+            counts.update(m.entity for m in masked.entities)
+        if masked.text != v:
+            state[0] = True
+        return masked.text
 
     def _walk(self, obj: Any, counts: Counter, state: list[bool]) -> Any:
         if isinstance(obj, dict):
+            if obj.get("role") == "system" and not self.scan_system_messages:
+                return obj
             out = {}
             for k, v in obj.items():
                 if isinstance(v, str) and (k in self.fields or k == "content"):
-                    if self.engine.block_violations:
-                        safety = self.engine.scan_safety(v)
-                        if not safety.safe:
-                            raise _Violation(safety.reason, list(safety.violations))
-                    masked = self.engine.mask(v)
-                    if masked.entities:
-                        counts.update(m.entity for m in masked.entities)
-                    if masked.text != v:
-                        state[0] = True
-                    out[k] = masked.text
+                    out[k] = self._sanitize_str(v, counts, state)
+                elif isinstance(v, list) and (k == "content" or k in self.fields):
+                    parts = [
+                        p
+                        for p in v
+                        if isinstance(p, dict) and p.get("type") == "text" and isinstance(p.get("text"), str)
+                    ]
+                    texts = [p["text"] for p in parts]
+                    if len(texts) > 1 and self.engine.block_violations:
+                        for combined in ("".join(texts), " ".join(texts)):
+                            safety = self.engine.scan_safety(combined)
+                            if not safety.safe:
+                                raise _Violation(safety.reason, list(safety.violations))
+                    new_list = []
+                    for item in v:
+                        if isinstance(item, dict) and item.get("type") == "text" and isinstance(item.get("text"), str):
+                            new_list.append({**item, "text": self._sanitize_str(item["text"], counts, state)})
+                        else:
+                            new_list.append(self._walk(item, counts, state))
+                    out[k] = new_list
                 else:
                     out[k] = self._walk(v, counts, state)
             return out

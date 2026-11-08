@@ -44,9 +44,20 @@ ALL_ENTITIES = tuple(DETECTORS)
 # Entity names that a detector emits, mapped to the detector key that produces them.
 _DETECTOR_OF = {"ID_BPJS_KES": "ID_BPJS", "ID_BPJS_TK": "ID_BPJS"}
 
+_DETECTORS_WITH_LOWER = {
+    "ID_NPWP",
+    "ID_BANK_ACCOUNT",
+    "ID_BPJS",
+    "ID_NISN",
+    "ID_PASSPORT",
+    "ID_SIM",
+}
 
-# Invisible characters that can split a number ("0812\u200b34567890") without changing how it looks.
-_INVISIBLE = re.compile(r"[\u00ad\u200b-\u200f\u2060\ufeff]")
+_DIGIT_RE = re.compile(r"\d")
+
+# Invisible characters that can split a number ("0812\u200b34567890") without changing how it looks,
+# including Unicode bidirectional formatting characters (\u202a-\u202e and \u2066-\u2069).
+_INVISIBLE = re.compile(r"[\u00ad\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]")
 
 
 def detect_pii(text: str, entities: tuple[str, ...] | None = None, check_region: bool = True) -> list[PIIMatch]:
@@ -57,14 +68,29 @@ def detect_pii(text: str, entities: tuple[str, ...] | None = None, check_region:
     match positions always refer to the original text.
     """
     wanted = _resolve_entities(entities)
-    if not text or not any(ch.isdigit() or ch == "@" or ch.isupper() for ch in text):
+    if not text:
+        return []
+    has_digit = bool(_DIGIT_RE.search(text))
+    has_at = "@" in text
+    if not has_digit and not has_at:
         return []
     if _INVISIBLE.search(text):
         return _detect_without_invisible(text, entities, check_region)
+    if not has_digit:
+        if "EMAIL" not in wanted:
+            return []
+        return find_email(text)
+
+    text_lower = text.lower()
     found: list[PIIMatch] = []
     for name in wanted:
         if name == "ID_NIK":
             found.extend(find_nik(text, check_region=check_region))
+        elif name == "EMAIL":
+            if has_at:
+                found.extend(find_email(text))
+        elif name in _DETECTORS_WITH_LOWER:
+            found.extend(DETECTORS[name](text, text_lower=text_lower))
         else:
             found.extend(DETECTORS[name](text))
     if entities:  # a detector may emit more than was asked for (e.g. ID_BPJS_TK when only ID_BPJS_KES is wanted)

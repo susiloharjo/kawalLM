@@ -2,6 +2,22 @@
 
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikuti [SemVer](https://semver.org/).
 
+## [0.2.1] - 2026-11-08
+
+### Added
+- Dukungan paspor RI seri 2 huruf (`[A-Z]{1,2}\s?\d{7}`, mis. `AA 1234567`, `XD1234567`) pada `ID_PASSPORT`.
+- Penambahan spesifikasi rekening bank populer pada `ID_BANK_ACCOUNT`: `blu` / `bca digital` (12 digit), `muamalat` (10 digit), `bjb` (13 digit), `bank dki` (11–12 digit), dan `bank jatim` (10 digit).
+- Parameter `scan_system_messages: bool = False` pada `KawalLMMiddleware` (FastAPI) agar `role: "system"` dilewati secara default, serta deteksi prompt injection yang dipecah lintas elemen `content` multimodal.
+
+### Changed
+- Optimasi latensi `detect_pii()` dan `normalize()`: pre-filter digit/`@`, deduplikasi `text.lower()` dengan cache Aho-Corasick pada `mentions_any()`, serta pre-filter Aho-Corasick untuk karakter berulang (`_REPEAT_AUTOMATON`), menurunkan latensi `p95` 1.000 kata ke `< 1 ms` dan teks tanpa angka ke `< 1 µs`.
+- Penguatan normalisasi anti-evasion: dukungan spaced-out separator campuran (`s.l-o_t`), translasi homoglyph Cyrillic/Greek, pemisahan suffix angka ekor (`g4c0r88`, `m4xw1n77`), dan stripping karakter Unicode bidirectional formatting WhatsApp (`\u202a-\u202e`, `\u2066-\u2069`).
+- Publish kembali memakai attestation PEP 740 (provenance). `0.2.0` terbit tanpa provenance karena layanan Rekor sedang error saat rilis.
+
+### Fixed
+- Streaming LiteLLM: menahan pemotongan buffer yang membelah span entitas multi-token (`ID_PLATE`, `ID_PASSPORT`).
+- Penerimaan nama sub-entitas `ID_BPJS_KES` dan `ID_BPJS_TK` pada parameter `entities`.
+
 ## [0.2.0] - 2026-11-07
 
 Lingkup rilis ini: deteksi PII Indonesia dan pola safety yang eksplisit. Bukan guardrail umum (tidak ada classifier semantik); lihat *Keterbatasan* di README.

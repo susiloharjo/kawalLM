@@ -16,7 +16,7 @@ from .pii import PIIMatch, detect_pii, parse_nik, validate_nik, validate_npwp
 from .placeholders import StreamDeanonymizer
 from .safety import SafetyResult, SafetyScanner
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 __all__ = [
     "AuditEvent",

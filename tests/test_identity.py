@@ -41,7 +41,8 @@ def test_passport_needs_keyword_and_shape():
     assert [m.text for m in find_passport("passport: A 1234567")] == ["A 1234567"]
     assert find_passport("kode X1234567") == []
     assert find_passport("paspor x1234567") == []  # printed in capitals
-    assert find_passport("paspor XY1234567") == []
+    assert [m.text for m in find_passport("paspor XY1234567")] == ["XY1234567"]  # 2 letters series
+    assert find_passport("paspor XYZ1234567") == []  # 3 letters invalid
 
 
 def test_sim_needs_keyword():

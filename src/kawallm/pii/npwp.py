@@ -47,13 +47,13 @@ def validate_npwp(value: str) -> bool:
     return luhn_valid(d[:9])
 
 
-def find_npwp(text: str) -> list[PIIMatch]:
+def find_npwp(text: str, text_lower: str | None = None) -> list[PIIMatch]:
     out = []
     if "." in text and "-" in text:
         for m in NPWP_FORMATTED_RE.finditer(text):
             if validate_npwp(m.group()):
                 out.append(PIIMatch("ID_NPWP", m.start(), m.end(), m.group(), 1.0))
-    if mentions_any(text, NPWP_KEYWORDS):
+    if mentions_any(text, NPWP_KEYWORDS, text_lower=text_lower):
         for m in NPWP_PLAIN_RE.finditer(text):
             if validate_npwp(m.group()) and has_keyword_near(text, m.start(), m.end(), NPWP_KEYWORDS):
                 out.append(PIIMatch("ID_NPWP", m.start(), m.end(), m.group(), 0.9))

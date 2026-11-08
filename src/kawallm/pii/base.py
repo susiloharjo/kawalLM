@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import bisect
+import functools
 import re
 from dataclasses import dataclass, field
 from typing import Any
+
+import ahocorasick
 
 # Priority when two detections overlap: higher wins.
 PRIORITY = {
@@ -47,10 +50,24 @@ def digits_only(s: str) -> str:
     return "".join(ch for ch in s if ch.isdigit())
 
 
-def mentions_any(text: str, keywords: frozenset[str]) -> bool:
+@functools.lru_cache(maxsize=32)
+def _get_automaton(keywords: frozenset[str]) -> ahocorasick.Automaton:
+    auto = ahocorasick.Automaton()
+    for k in keywords:
+        auto.add_word(k, k)
+    auto.make_automaton()
+    return auto
+
+
+def mentions_any(text: str, keywords: frozenset[str], text_lower: str | None = None) -> bool:
     """Cheap pre-filter: True if any keyword occurs as a substring in ``text`` (case-insensitive)."""
-    low = text.lower()
-    return any(k in low for k in keywords)
+    if not keywords:
+        return False
+    low = text_lower if text_lower is not None else text.lower()
+    auto = _get_automaton(keywords)
+    for _ in auto.iter(low):
+        return True
+    return False
 
 
 def has_keyword_near(text: str, start: int, end: int, keywords: frozenset[str], window_words: int = 5) -> str | None:
