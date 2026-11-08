@@ -19,6 +19,9 @@ from .safety import SafetyResult, SafetyScanner
 MASK_MODES = ("token", "redact", "partial", "reversible", "generalize")
 
 
+_EMITTED_BY = {"ID_BPJS": ("ID_BPJS_KES", "ID_BPJS_TK")}
+
+
 def _validate_mode_by_entity(mapping: Mapping[str, str] | None) -> dict[str, str]:
     """``{"ID_PHONE": "reversible", ...}`` checked against the known entity names and mask modes."""
     if not mapping:
@@ -30,7 +33,13 @@ def _validate_mode_by_entity(mapping: Mapping[str, str] | None) -> dict[str, str
             raise ValueError(f"unknown entity {entity!r} in mode_by_entity; expected one of {sorted(known)}")
         if mode not in MASK_MODES:
             raise ValueError(f"mode_by_entity[{entity!r}] must be one of {MASK_MODES}, got {mode!r}")
-        out[entity] = mode
+        # A detector key stands for every entity it emits: ID_BPJS -> ID_BPJS_KES and ID_BPJS_TK.
+        for emitted in _EMITTED_BY.get(entity, (entity,)):
+            out.setdefault(emitted, mode)
+    # An entry that names the entity itself wins over one that names its detector.
+    for entity, mode in dict(mapping).items():
+        if entity not in _EMITTED_BY:
+            out[entity] = mode
     return out
 
 

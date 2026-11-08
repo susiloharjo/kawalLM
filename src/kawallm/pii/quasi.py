@@ -59,7 +59,13 @@ _DETAIL = (
     rf"|,?\s*(?i:Kel|Kelurahan|Desa|Kec|Kecamatan|Kab|Kabupaten|Kota)\.?\s+{_NAME})"
 )
 _ADDRESS_RE = re.compile(rf"\b(?i:Jl|Jln|Jalan|Gg|Gang)\.?\s+{_STREET}{_DETAIL}+")
-_AREA_RE = re.compile(r"(?i:\b(?:Kel|Kelurahan|Desa|Kec|Kecamatan|Kab|Kabupaten|Kota)\.?\s+.*$)")
+# One administrative component ("Kel. Menteng"). Only these are kept when an address is generalised, so house
+# numbers, RT/RW and the street never survive.
+_AREA_WORD = r"(?:Kel|Kelurahan|Desa|Kec|Kecamatan|Kab|Kabupaten|Kota)"
+_AREA_NAME = (
+    r"[A-Z][A-Za-z']*(?: (?!(?:No|Nomor|RT|RW|Blok|" + _AREA_WORD + r")\b)[A-Z][A-Za-z']*){0,2}"
+)  # a name stops at the next marker, so "Kel. Menteng No. 5" keeps only "Menteng"
+_AREA_PART_RE = re.compile(rf"(?i:\b{_AREA_WORD}\.?)\s+{_AREA_NAME}")
 
 
 def _valid_date(year: int, month: int, day: int) -> bool:
@@ -130,8 +136,8 @@ def find_address(text: str) -> list[PIIMatch]:
         return []
     out = []
     for m in _ADDRESS_RE.finditer(text):
-        area = _AREA_RE.search(m.group())
-        out.append(PIIMatch("ID_ADDRESS", m.start(), m.end(), m.group(), 0.8, {"area": area.group() if area else None}))
+        parts = [p.group() for p in _AREA_PART_RE.finditer(m.group())]
+        out.append(PIIMatch("ID_ADDRESS", m.start(), m.end(), m.group(), 0.8, {"area": ", ".join(parts) or None}))
     return out
 
 

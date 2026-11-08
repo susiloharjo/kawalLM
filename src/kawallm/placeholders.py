@@ -21,7 +21,7 @@ _LOOSE_RE = re.compile(
     rf"{_OPEN}(ID(?:[\s_]+[A-Za-z]+)+?|EMAIL|IP[\s_]+ADDRESS|GEO[\s_]+COORDINATES)[\s_]+(\d+)[\s_:\-]+([0-9a-f]{{{_NONCE_LEN}}})(?![0-9A-Za-z]){_CLOSE}",
     re.IGNORECASE,
 )
-_HINT_RE = re.compile(r"id|email|ip", re.IGNORECASE)
+_HINT_RE = re.compile(r"id|email|ip|geo", re.IGNORECASE)  # cheap pre-filter: every entity name contains one
 
 # Longest realistic rewritten placeholder (&lt;ID_BPJS_KES_999_abcdef&gt; plus some spaces); used as stream hold-back.
 MAX_PLACEHOLDER_LEN = 64

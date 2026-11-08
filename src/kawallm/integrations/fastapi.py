@@ -181,23 +181,36 @@ class KawalLMMiddleware:
         counts: Counter = Counter()
         state = [False]
         ctx = {"method": scope.get("method", ""), "path": scope["path"]}
+        # Only a failure to PARSE lets the body through unchanged (it is not JSON, so there is nothing to scan).
+        # A failure while sanitising or re-encoding must never forward the original body: that would leak what
+        # was supposed to be masked, so those requests are refused.
         try:
             payload = json.loads(body or b"null")
-            sanitized = self._walk(payload, counts, state)
-            new_body = json.dumps(sanitized, ensure_ascii=False).encode() if state[0] else body
-        except _Violation as v:
-            if self.audit:
-                self.audit.record(
-                    "fastapi",
-                    entities=counts.elements(),
-                    categories=v.categories,
-                    blocked=True,
-                    context=ctx,
-                )
-            await _send_json(send, 400, {"error": f"[KawalLM Violation] Request ditolak: {v.reason}"})
+        except RecursionError:
+            await _send_json(send, 400, {"error": "[KawalLM] Request ditolak: JSON terlalu dalam"})
             return
-        except ValueError:  # invalid JSON, or bytes that are not UTF-8: pass through unchanged
+        except ValueError:  # invalid JSON, or bytes that are not UTF-8
+            payload = _NOT_JSON
+        if payload is _NOT_JSON:
             new_body = body
+        else:
+            try:
+                sanitized = self._walk(payload, counts, state)
+                new_body = _encode(sanitized) if state[0] else body
+            except _Violation as v:
+                if self.audit:
+                    self.audit.record(
+                        "fastapi",
+                        entities=counts.elements(),
+                        categories=v.categories,
+                        blocked=True,
+                        context=ctx,
+                    )
+                await _send_json(send, 400, {"error": f"[KawalLM Violation] Request ditolak: {v.reason}"})
+                return
+            except (RecursionError, ValueError):
+                await _send_json(send, 400, {"error": "[KawalLM] Request ditolak: body tidak dapat disanitasi"})
+                return
 
         if self.audit:
             self.audit.record("fastapi", entities=counts.elements(), blocked=False, context=ctx)
@@ -217,6 +230,17 @@ class KawalLMMiddleware:
             return {"type": "http.request", "body": new_body, "more_body": False}
 
         await self.app(scope, replay, send)
+
+
+_NOT_JSON = object()
+
+
+def _encode(value: Any) -> bytes:
+    """JSON bytes of the sanitised body. A lone surrogate cannot be UTF-8 encoded, so it is written as an escape."""
+    try:
+        return json.dumps(value, ensure_ascii=False).encode("utf-8")
+    except UnicodeEncodeError:
+        return json.dumps(value, ensure_ascii=True).encode("ascii")
 
 
 class _Violation(Exception):

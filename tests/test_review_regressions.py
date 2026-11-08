@@ -562,3 +562,64 @@ async def test_older_litellm_without_the_helper_still_works():
     d = {"messages": [{"role": "user", "content": f"NIK {NIK}"}]}
     await g.async_pre_call_hook(None, None, d, "completion")
     assert "<ID_NIK>" in d["messages"][0]["content"]
+
+
+# ---------------------------------------------------------------- FastAPI must not fail open
+def _chat_app():
+    from fastapi import FastAPI, Request
+
+    from kawallm.integrations.fastapi import KawalLMMiddleware
+
+    app = FastAPI()
+    app.add_middleware(KawalLMMiddleware, paths=("/chat",), fields=("prompt",))
+
+    @app.post("/chat")
+    async def chat(req: Request):
+        return {"got": (await req.body()).decode("utf-8", "replace")}
+
+    return app
+
+
+def test_fastapi_masks_even_when_the_body_holds_a_lone_surrogate():
+    """A value that cannot be UTF-8 encoded must not make the middleware forward the original body."""
+    from fastapi.testclient import TestClient
+
+    c = TestClient(_chat_app())
+    body = b'{"prompt":"NIK 3171011501900001","extra":"\\ud800"}'
+    r = c.post("/chat", content=body, headers={"content-type": "application/json"})
+    assert r.status_code == 200 and NIK not in r.text and "<ID_NIK>" in r.text
+
+
+def test_fastapi_refuses_json_that_is_too_deep_and_passes_non_json_through():
+    from fastapi.testclient import TestClient
+
+    c = TestClient(_chat_app())
+    h = {"content-type": "application/json"}
+    assert c.post("/chat", content=b"[" * 100000 + b"]" * 100000, headers=h).status_code == 400
+    r = c.post("/chat", content=b"bukan json", headers=h)
+    assert r.status_code == 200 and r.json() == {"got": "bukan json"}
+
+
+def test_fastapi_audit_does_not_claim_masked_when_the_request_was_refused():
+    from fastapi.testclient import TestClient
+
+    from kawallm.integrations.fastapi import KawalLMMiddleware
+
+    events = []
+    app = _chat_app()
+    app.user_middleware.clear()
+    app.add_middleware(KawalLMMiddleware, paths=("/chat",), fields=("prompt",), audit=events.append)
+    TestClient(app).post("/chat", content=b"[" * 100000, headers={"content-type": "application/json"})
+    assert not any(e.action == "masked" for e in events)
+
+
+# ---------------------------------------------------------------- a standalone coordinate placeholder is restored
+def test_geo_placeholder_is_restored_on_its_own_and_in_a_stream():
+    from kawallm.placeholders import StreamDeanonymizer
+
+    e = KawalLMEngine(entities="extended", mode="reversible")
+    r = e.mask("GPS koordinat -6.20000, 106.80000")
+    assert e.unmask(r.text, r.session_id) == "GPS koordinat -6.20000, 106.80000"
+    d = StreamDeanonymizer(e.vault.mapping(r.session_id))
+    out = "".join(d.feed(r.text[i : i + 5]) for i in range(0, len(r.text), 5)) + d.flush()
+    assert out == "GPS koordinat -6.20000, 106.80000"

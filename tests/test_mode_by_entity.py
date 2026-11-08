@@ -153,3 +153,18 @@ def test_fastapi_masks_two_complete_values_in_adjacent_parts():
     }
     out = m._walk(body, Counter(), [False])
     assert [p["text"] for p in out["messages"][0]["content"]] == ["<ID_NIK>", "<ID_NIK>"]
+
+
+def test_detector_key_applies_to_every_entity_it_emits():
+    e = KawalLMEngine(mode="reversible", mode_by_entity={"ID_BPJS": "redact"})
+    assert e.mode_by_entity == {"ID_BPJS_KES": "redact", "ID_BPJS_TK": "redact"}
+    r = e.mask("BPJS 0001234567890")
+    assert r.text == "BPJS [REDACTED]"
+    assert e.unmask(r.text, r.session_id) == "BPJS [REDACTED]"  # the number cannot be restored
+
+
+def test_an_entry_for_the_entity_itself_wins_over_its_detector_key():
+    e = KawalLMEngine(mode="reversible", mode_by_entity={"ID_BPJS": "redact", "ID_BPJS_TK": "token"})
+    assert e.mode_by_entity == {"ID_BPJS_KES": "redact", "ID_BPJS_TK": "token"}
+    e2 = KawalLMEngine(mode="reversible", mode_by_entity={"ID_BPJS_TK": "token", "ID_BPJS": "redact"})
+    assert e2.mode_by_entity == {"ID_BPJS_KES": "redact", "ID_BPJS_TK": "token"}  # order does not matter

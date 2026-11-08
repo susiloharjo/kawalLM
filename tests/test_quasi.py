@@ -186,3 +186,26 @@ def test_benign_sentences_are_untouched_by_the_extended_profile():
     guard = KawalLM(entities="extended")
     changed = [s for s in sentences if guard.scan(s).sanitized_text != s]
     assert not changed, changed
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Jl. Sudirman Kel. Menteng No. 5", "Kel. Menteng"),
+        ("Jl. Sudirman Kel. Menteng RT 001 RW 002", "Kel. Menteng"),
+        (
+            "Jl. Sudirman No. 5, RT 3/RW 4, Kel. Menteng, Kec. Tebet, Kota Jakarta Selatan",
+            "Kel. Menteng, Kec. Tebet, Kota Jakarta Selatan",
+        ),
+        ("Jl. Kebon Jeruk Kel. Kebon Jeruk Blok A3", "Kel. Kebon Jeruk"),
+    ],
+)
+def test_generalized_address_keeps_only_the_administrative_area(text, expected):
+    out = KawalLM(entities="extended", mode="generalize").scan(text).sanitized_text
+    assert out == expected
+    for detail in ("No.", "RT", "RW", "Blok", "Sudirman", "Kebon Jeruk Blok"):
+        assert detail not in out
+
+
+def test_address_without_an_area_becomes_the_plain_token():
+    assert KawalLM(entities="extended", mode="generalize").scan("Jl. Melati No. 7").sanitized_text == "<ID_ADDRESS>"

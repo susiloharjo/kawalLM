@@ -12,6 +12,10 @@ Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikut
 - Audit log: field `flags` dengan `combined_quasi_identifiers` bila satu request memuat dua atau lebih jenis quasi-identifier. Hanya jumlah, tanpa nilai.
 
 ### Fixed
+- **Keamanan**: middleware FastAPI gagal terbuka bila hasil sanitasi tidak bisa di-encode UTF-8 (mis. surrogate tunggal `\ud800` di body JSON): body asli, termasuk data yang seharusnya dimaskir, diteruskan ke handler. Penyebabnya `except ValueError` yang terlalu luas (ada sejak 0.2.2). Sekarang hanya kegagalan parse yang meneruskan body asli; kegagalan sanitasi atau encoding menolak request (400), surrogate ditulis sebagai escape JSON, dan JSON yang terlalu dalam ditolak.
+- Placeholder reversible `GEO_COORDINATES` yang berdiri sendiri kini dipulihkan (`unmask` dan streaming); pra-filter hanya mengenali `id|email|ip`.
+- `generalize` untuk alamat hanya menyimpan komponen administratif (kelurahan, kecamatan, kota); nomor rumah, RT/RW, dan blok tidak lagi ikut.
+- `mode_by_entity={"ID_BPJS": ...}` kini berlaku untuk `ID_BPJS_KES` dan `ID_BPJS_TK`; sebelumnya diterima tetapi diabaikan.
 - Middleware FastAPI: dua nilai lengkap di text part yang berdekatan (mis. dua NIK) kini keduanya termask; sebelumnya penggabungan membuat keduanya menjadi satu rangkaian digit panjang yang tidak cocok.
 
 ## [0.2.3] - 2026-11-08
