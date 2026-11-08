@@ -28,7 +28,9 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import logging
 import re
+import time
 import uuid
 from collections import Counter
 from dataclasses import replace
@@ -42,6 +44,7 @@ from kawallm.core import KawalLMEngine
 from kawallm.pii.base import resolve_overlaps
 from kawallm.placeholders import _LOOSE_RE, restore_tokens
 
+_log = logging.getLogger("kawallm")
 _SESSION_KEY = "kawallm_session"
 _HOLDBACK = 64  # >= kawallm.placeholders.MAX_PLACEHOLDER_LEN
 _MAX_TOOL_ARGUMENT_CHARS = 256_000  # larger tool-call arguments are refused (400), not parsed
@@ -162,6 +165,38 @@ class KawalLMGuardrail(CustomGuardrail):
         if counts is not None:
             counts.update(m.entity for m in res.entities)
         return res.text
+
+    def _report_guardrail(
+        self,
+        data: dict,
+        counts: Counter,
+        *,
+        blocked: bool = False,
+        categories: Any = (),
+        started: float | None = None,
+    ) -> None:
+        """Write this guardrail's result into the request, where LiteLLM's dashboards and loggers read it.
+
+        Only entity counts and category names are passed. No text and no matched values. Older LiteLLM versions
+        without the helper are skipped, and a failure here never fails the request.
+        """
+        report = getattr(self, "add_standard_logging_guardrail_information_to_request_data", None)
+        if report is None:
+            return
+        now = time.time()
+        try:
+            report(
+                guardrail_json_response={"masked": dict(counts), "violations": sorted(set(categories))},
+                request_data=data,
+                guardrail_status="guardrail_intervened" if blocked else "success",
+                guardrail_provider="kawallm",
+                start_time=started,
+                end_time=now,
+                duration=(now - started) if started is not None else None,
+                masked_entity_count=dict(counts),
+            )
+        except Exception:
+            _log.warning("kawallm: could not write guardrail information for this request")
 
     def _record(
         self,
@@ -290,10 +325,12 @@ class KawalLMGuardrail(CustomGuardrail):
             return data
         sid = self._session(data, self.engine.mode == "reversible", user_api_key_dict)
         counts: Counter = Counter()
+        started = time.time()
         try:
             self._process_messages(messages, sid, counts)
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
+            self._report_guardrail(data, counts, blocked=True, categories=detail.get("categories", ()), started=started)
             self._record(
                 "litellm.pre_call",
                 data,
@@ -303,6 +340,7 @@ class KawalLMGuardrail(CustomGuardrail):
                 categories=detail.get("categories", ()),
             )
             raise
+        self._report_guardrail(data, counts, started=started)
         self._record("litellm.pre_call", data, user_api_key_dict, counts)
         return data
 
@@ -403,6 +441,7 @@ class KawalLMGuardrail(CustomGuardrail):
             for fn in calls:
                 if fn is not None and isinstance(getattr(fn, "arguments", None), str):
                     fn.arguments = self._process_tool_args(fn.arguments, sid, counts)
+        self._report_guardrail(data, counts)
         self._record("litellm.post_call", data, user_api_key_dict, counts)
         return response
 
@@ -453,6 +492,7 @@ class KawalLMGuardrail(CustomGuardrail):
             for extra in _attach_tails(pending, states):
                 yield extra  # synthetic chunk(s), sent before the final (e.g. usage-only) chunk
             yield pending
+        self._report_guardrail(request_data, counts)
         self._record("litellm.post_call", request_data, user_api_key_dict, counts)
 
 

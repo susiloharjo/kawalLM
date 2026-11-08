@@ -521,3 +521,44 @@ def test_vendor_json_content_type_is_guarded():
     for ct in ("application/json", "application/vnd.api+json; charset=utf-8"):
         r = c.post("/chat", content='{"prompt":"NIK 3171011501900001"}', headers={"content-type": ct})
         assert r.status_code == 200 and "3171011501900001" not in r.text, ct
+
+
+async def test_guardrail_result_is_written_for_the_dashboard_without_values():
+    g = G()
+    d = {"litellm_call_id": "rep-1", "messages": [{"role": "user", "content": f"NIK {NIK} HP 081234567890"}]}
+    await g.async_pre_call_hook(None, None, d, "completion")
+    (rec,) = d["metadata"]["standard_logging_guardrail_information"]
+    assert rec["guardrail_provider"] == "kawallm" and rec["guardrail_status"] == "success"
+    assert rec["masked_entity_count"] == {"ID_NIK": 1, "ID_PHONE": 1}
+    dumped = json.dumps(d["metadata"]["standard_logging_guardrail_information"])
+    assert NIK not in dumped and "081234567890" not in dumped
+
+
+async def test_blocked_request_is_reported_as_intervened():
+    g = G()
+    d = {"messages": [{"role": "user", "content": "slot gacor maxwin"}]}
+    with pytest.raises(HTTPException):
+        await g.async_pre_call_hook(None, None, d, "completion")
+    (rec,) = d["metadata"]["standard_logging_guardrail_information"]
+    assert rec["guardrail_status"] == "guardrail_intervened"
+    assert rec["guardrail_response"]["violations"] == ["JUDOL_PINJOL"]
+
+
+async def test_reporting_failure_never_fails_the_request():
+    g = G()
+
+    def boom(**kw):
+        raise RuntimeError("logging backend down")
+
+    g.add_standard_logging_guardrail_information_to_request_data = boom
+    d = {"messages": [{"role": "user", "content": f"NIK {NIK}"}]}
+    await g.async_pre_call_hook(None, None, d, "completion")  # must not raise
+    assert NIK not in d["messages"][0]["content"]
+
+
+async def test_older_litellm_without_the_helper_still_works():
+    g = G()
+    g.add_standard_logging_guardrail_information_to_request_data = None  # as if the installed LiteLLM lacks it
+    d = {"messages": [{"role": "user", "content": f"NIK {NIK}"}]}
+    await g.async_pre_call_hook(None, None, d, "completion")
+    assert "<ID_NIK>" in d["messages"][0]["content"]

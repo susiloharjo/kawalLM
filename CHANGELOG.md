@@ -2,6 +2,11 @@
 
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikuti [SemVer](https://semver.org/).
 
+## [0.2.3] - 2026-11-08
+
+### Added
+- Hasil guardrail LiteLLM kini ditulis ke `standard_logging_guardrail_information` (`guardrail_provider="kawallm"`, status `success` atau `guardrail_intervened`, jumlah entitas per jenis). Dashboard dan logger LiteLLM sekarang bisa menampilkan evaluasi dan request yang diblokir. Hanya jumlah dan nama kategori yang dicatat, tanpa teks atau nilai PII. Versi LiteLLM tanpa helper ini dilewati, dan kegagalan pencatatan tidak menggagalkan request.
+
 ## [0.2.2] - 2026-11-08
 
 ### Fixed
