@@ -103,6 +103,7 @@ class KawalLMGuardrail(CustomGuardrail):
         audit_include_clean: bool = True,
         audit_include_user: bool = False,
         mode_by_entity: dict[str, str] | str | None = None,
+        ip_scope: str = "public",
         **kwargs: Any,
     ) -> None:
         if block_safety_violations is not None:  # alias used in older docs
@@ -114,6 +115,7 @@ class KawalLMGuardrail(CustomGuardrail):
             mode=masking_mode,
             mode_by_entity=_as_mapping(mode_by_entity),
             entities=_as_list(entities) or None,
+            ip_scope=ip_scope,
             block_categories=_as_list(block_categories) or ("JUDOL_PINJOL", "SARA_HATE_SPEECH", "JAILBREAK"),
             threshold=float(threshold),
         )

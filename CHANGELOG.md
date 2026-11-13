@@ -2,6 +2,20 @@
 
 Format mengikuti [Keep a Changelog](https://keepachangelog.com/); versi mengikuti [SemVer](https://semver.org/).
 
+## [0.4.0] - 2026-11-13
+
+**Perubahan perilaku default:** `IP_ADDRESS` kini hanya memaskir IP publik (lihat *Changed*). Pakai `ip_scope="all"` untuk perilaku lama.
+
+### Added
+- `ip_scope` (`"public"` default, atau `"all"`) di `KawalLMEngine`/`KawalLM`, guardrail LiteLLM, `detect_pii`, dan CLI (`--ip-scope`): `"all"` juga memaskir IP jaringan privat (`10.x`, `192.168.x`, `172.16-31.x`, `fc00::/7`) untuk deployment yang tidak boleh membocorkan topologi internal.
+
+### Changed
+- **Perubahan perilaku default:** `IP_ADDRESS` kini hanya memaskir IP publik. IP jaringan privat tidak lagi dimaskir (pakai `ip_scope="all"` untuk perilaku lama). Alamat yang tidak mengidentifikasi siapa pun tidak pernah dimaskir di mode mana pun: loopback, `0.0.0.0`, link-local, multicast, broadcast, rentang dokumentasi, dan DNS publik umum (Cloudflare, Google, Quad9, OpenDNS, AdGuard, dll.).
+
+### Fixed
+- Referensi paket di URL CDN/npm (`lodash@4.17.21`, `react@18.2.0`, `pkg@1.2.3-beta`) tidak lagi dimaskir sebagai email. Domain email kini wajib diakhiri TLD huruf (minimal 2), dan tidak boleh langsung diikuti karakter kata.
+- Teks teknis yang mirip pengenal tidak lagi dimaskir: nomor versi empat bagian (`kernel 6.1.0.13`, `build 1.2.3.4`, `pkg==1.2.3.4`, `^1.2.3.4`, `1.2.3.4-rc1`) tidak dibaca sebagai IP; "Kelas/Blok/Lantai/Rute/Tipe/Seri A 1234 BC" tidak dibaca sebagai plat; angka bergaya HP setelah mata uang (`Rp 0812345678`) tidak dibaca sebagai nomor telepon.
+
 ## [0.3.1] - 2026-11-09
 
 ### Fixed

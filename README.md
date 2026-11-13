@@ -1,6 +1,6 @@
 # KawalLM 🇮🇩
 
-[![PyPI](https://img.shields.io/pypi/v/kawallm.svg?v=0.3.1)](https://pypi.org/project/kawallm/)
+[![PyPI](https://img.shields.io/pypi/v/kawallm.svg?v=0.4.0)](https://pypi.org/project/kawallm/)
 [![Python](https://img.shields.io/pypi/pyversions/kawallm.svg)](https://pypi.org/project/kawallm/)
 [![CI](https://github.com/susiloharjo/kawalLM/actions/workflows/ci.yml/badge.svg)](https://github.com/susiloharjo/kawalLM/actions/workflows/ci.yml)
 [![License](https://img.shields.io/pypi/l/kawallm.svg)](LICENSE)
@@ -126,7 +126,7 @@ Di LiteLLM: `mode_by_entity: {ID_PHONE: reversible, EMAIL: reversible}` (atau st
 ### Entitas
 
 `ID_NIK`, `ID_NPWP`, `ID_NIP`, `ID_PHONE`, `ID_BANK_ACCOUNT`, `ID_BPJS_KES`, `ID_BPJS_TK`, `ID_NISN`, `ID_PASSPORT`, `ID_SIM`, `ID_PLATE`, `IP_ADDRESS`, `EMAIL`.
-`IP_ADDRESS` mencakup IPv4 dan IPv6 yang valid; angka mirip IP seperti nomor build (`10.0.19045.2965`), `v1.2.3.4`, MAC, dan jam tidak ikut. Alamat IP internal (`10.x`, `192.168.x`) juga dimaskir; untuk asisten jaringan yang perlu melihat IP, matikan lewat `entities=` (mis. tanpa `IP_ADDRESS`).
+`IP_ADDRESS` mencakup IPv4 dan IPv6 yang valid; angka mirip IP seperti nomor build (`10.0.19045.2965`), `kernel 6.1.0.13`, `v1.2.3.4`, `pkg==1.2.3.4`, MAC, dan jam tidak ikut. **Secara default hanya IP publik yang dimaskir** (`ip_scope="public"`). Alamat yang tidak mengidentifikasi siapa pun tidak pernah dimaskir di mode mana pun: loopback (`127.0.0.1`, `::1`), `0.0.0.0`, link-local (`169.254.x.x`, `fe80::`), multicast, broadcast, rentang dokumentasi, dan DNS publik yang umum dipakai (`1.1.1.1`, `8.8.8.8`, `9.9.9.9`, dll.). Jaringan privat (`10.x`, `192.168.x`, `172.16-31.x`, `fc00::/7`) juga dibiarkan; jika topologi internal tidak boleh sampai ke model, pakai `ip_scope="all"` (engine, guardrail LiteLLM, atau `--ip-scope all` di CLI). Untuk mematikan IP sepenuhnya, hilangkan `IP_ADDRESS` dari `entities=`.
 NIP (18 digit) dikenali dari strukturnya (tanggal lahir + bulan pengangkatan + gender). NISN, paspor, dan SIM tidak punya checksum, jadi hanya dimaskir bila ada kata kunci di dekatnya (`NISN`, `paspor`, `SIM`).
 Catatan: nomor **KK** punya struktur sama dengan NIK, sehingga terdeteksi sebagai `ID_NIK` (keduanya data pribadi).
 

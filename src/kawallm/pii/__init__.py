@@ -10,14 +10,16 @@ from .bank import find_bank_account
 from .base import PIIMatch, resolve_overlaps
 from .bpjs import find_bpjs
 from .identity import find_nip, find_nisn, find_passport, find_sim, validate_nip
-from .network import find_ip
+from .network import IP_SCOPES, find_ip
 from .nik import find_nik, parse_nik, validate_nik
 from .npwp import find_npwp, validate_npwp
 from .phone import find_phone, phone_operator
 from .plate import find_plate
 from .quasi import find_address, find_age, find_birthdate, find_coordinates, find_postal_code
 
-EMAIL_RE = re.compile(r"(?<![\w.+-])[\w.+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
+# A domain ends in an alphabetic TLD. This keeps package references such as ``lodash@4.17.21`` or ``react@18.2.0``
+# (CDN and npm URLs) from being read as e-mail addresses: their "domain" ends in a number.
+EMAIL_RE = re.compile(r"(?<![\w.+-])[\w.+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(?![\w-])")
 
 
 def find_email(text: str) -> list[PIIMatch]:
@@ -74,23 +76,28 @@ _DIGIT_RE = re.compile(r"\d")
 _INVISIBLE = re.compile(r"[\u00ad\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]")
 
 
-def detect_pii(text: str, entities: tuple[str, ...] | None = None, check_region: bool = True) -> list[PIIMatch]:
+def detect_pii(
+    text: str, entities: tuple[str, ...] | None = None, check_region: bool = True, ip_scope: str = "public"
+) -> list[PIIMatch]:
     """Run selected detectors and return non-overlapping matches sorted by position.
 
     ``check_region=False`` skips the Kemendagri region lookup for NIK (date and
     serial checks still apply). Invisible characters are dropped and compatibility
     forms are folded (NFKC, e.g. fullwidth digits) before detection; match positions
-    always refer to the original text.
+    always refer to the original text. ``ip_scope="public"`` (default) masks only public addresses; ``"all"`` also
+    masks private-network ones (``10.x``, ``192.168.x``). Loopback, link-local and similar addresses are never reported.
     """
+    if ip_scope not in IP_SCOPES:
+        raise ValueError(f"ip_scope must be one of {IP_SCOPES}")
     wanted = _resolve_entities(entities)
     if not text:
         return []
     names = expand_entities(entities) if entities else None
     cleaned, index = _normalized_view(text)
     if index is None:
-        return _detect_core(text, wanted, names, check_region)
+        return _detect_core(text, wanted, names, check_region, ip_scope)
     out = []
-    for m in _detect_core(cleaned, wanted, names, check_region):
+    for m in _detect_core(cleaned, wanted, names, check_region, ip_scope):
         start, end = index[m.start], index[m.end - 1] + 1
         out.append(replace(m, start=start, end=end, text=text[start:end]))
     return out
@@ -117,7 +124,9 @@ def _normalized_view(text: str) -> tuple[str, list[int] | None]:
     return "".join(chars), index
 
 
-def _detect_core(text: str, wanted: tuple[str, ...], entities, check_region: bool) -> list[PIIMatch]:
+def _detect_core(
+    text: str, wanted: tuple[str, ...], entities, check_region: bool, ip_scope: str = "public"
+) -> list[PIIMatch]:
     has_digit = bool(_DIGIT_RE.search(text))
     has_at = "@" in text
     if not has_digit:
@@ -137,6 +146,8 @@ def _detect_core(text: str, wanted: tuple[str, ...], entities, check_region: boo
         elif name == "EMAIL":
             if has_at:
                 found.extend(find_email(text))
+        elif name == "IP_ADDRESS":
+            found.extend(find_ip(text, ip_scope))
         elif name in _DETECTORS_WITH_LOWER:
             found.extend(DETECTORS[name](text, text_lower=text_lower))
         else:

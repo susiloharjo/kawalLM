@@ -12,6 +12,7 @@ from typing import Protocol, runtime_checkable
 from .audit import AuditLog, AuditSink, as_audit_log
 from .pii import ALL_ENTITIES, DETECTORS, PIIMatch, detect_pii, expand_entities
 from .pii.base import PRIORITY
+from .pii.network import IP_SCOPES
 from .pii.quasi import GENERALIZERS
 from .placeholders import StreamDeanonymizer, assign_token, restore_tokens
 from .safety import SafetyResult, SafetyScanner
@@ -135,9 +136,13 @@ class KawalLMEngine:
         audit: AuditLog | AuditSink | None = None,
         vault: VaultBackend | None = None,
         mode_by_entity: Mapping[str, str] | None = None,
+        ip_scope: str = "public",
     ) -> None:
         if mode not in MASK_MODES:
             raise ValueError(f"mode must be one of {MASK_MODES}")
+        if ip_scope not in IP_SCOPES:
+            raise ValueError(f"ip_scope must be one of {IP_SCOPES}")
+        self.ip_scope = ip_scope
         self.mask_pii_enabled = mask_pii
         self.block_violations = block_violations
         self.mode = mode
@@ -166,7 +171,7 @@ class KawalLMEngine:
 
     # ---------------- PII ----------------
     def detect(self, text: str) -> list[PIIMatch]:
-        return detect_pii(text, self.entities, check_region=self.validate_wilayah)
+        return detect_pii(text, self.entities, check_region=self.validate_wilayah, ip_scope=self.ip_scope)
 
     @property
     def reversible_enabled(self) -> bool:

@@ -18,10 +18,16 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help='profile or comma list: "core" (default), "extended" (adds birth date, age, postal code, address, GPS)',
     )
+    p.add_argument(
+        "--ip-scope",
+        default="public",
+        choices=["public", "all"],
+        help='"public" (default) masks only public IPs; "all" also masks private networks (10.x, 192.168.x)',
+    )
     p.add_argument("--json", action="store_true", help="print full JSON report")
     a = p.parse_args(argv)
     text = a.text if a.text is not None else sys.stdin.read()
-    eng = KawalLMEngine(mode=a.mode, entities=a.entities)
+    eng = KawalLMEngine(mode=a.mode, entities=a.entities, ip_scope=a.ip_scope)
     safety = eng.scan_safety(text)
     masked = eng.mask(text)
     if a.json:

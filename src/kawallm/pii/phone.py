@@ -41,6 +41,9 @@ def phone_operator(value: str) -> str | None:
     return OPERATOR_PREFIXES.get(d[:4])
 
 
+_CURRENCY_BEFORE = re.compile(r"(?<![a-z])(?:rp\.?|idr|usd|eur|sgd)\s*$|[$€£¥]\s*$")  # an amount, not a number
+
+
 def find_phone(text: str) -> list[PIIMatch]:
     out = []
     if "8" in text:
@@ -50,6 +53,8 @@ def find_phone(text: str) -> list[PIIMatch]:
                 op = phone_operator(part)
                 if op:
                     start = m.start() + offset
+                    if _CURRENCY_BEFORE.search(text[max(0, start - 6) : start].lower()):
+                        break
                     out.append(PIIMatch("ID_PHONE", start, start + len(part), part, 1.0, {"operator": op}))
                     break
     return out + find_landline(text)

@@ -22,12 +22,19 @@ REGION_CODES = frozenset(
     """.split()
 )
 
+# A label that names something else (a class, a block, a bus route): "Kelas A 1234 BC" is not a plate.
+_NOT_A_PLATE_AFTER = re.compile(
+    r"(?<![a-z])(?:kelas|blok|lantai|rute|tipe|type|model|seri|pasal|ruang|gedung|class|floor|room|block|route|series)\s*$"
+)
+
 PLATE_RE = re.compile(r"([A-Z](?<![A-Za-z0-9].)[A-Z]?)\s?(\d{1,4})\s?([A-Z]{1,3})(?![A-Za-z0-9])")
 
 
 def find_plate(text: str) -> list[PIIMatch]:
     out = []
     for m in PLATE_RE.finditer(text):
-        if m.group(1) in REGION_CODES:
+        if m.group(1) in REGION_CODES and not _NOT_A_PLATE_AFTER.search(
+            text[max(0, m.start() - 10) : m.start()].lower()
+        ):
             out.append(PIIMatch("ID_PLATE", m.start(), m.end(), m.group(), 0.8))
     return out
